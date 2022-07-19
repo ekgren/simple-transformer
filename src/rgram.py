@@ -84,7 +84,8 @@ class NSP(nn.Module):
         for i in range(8):
             j = i + 1
             probs = F.softmax(logits, dim=-1)
-            _, idx_next = torch.topk(probs, k=1, dim=-1)
+            #_, idx_next = torch.topk(probs, k=1, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
             idx_next = idx_next.view(t)
             bool_mask = idx_next == pred_targets
             bool_indices = bool_mask.nonzero().view(-1)
