@@ -56,6 +56,21 @@ class MergeBlock(nn.Module):
         x = x2 + self.mlp(self.ln_1(x))
         return x
 
+class UnMergeBlock(nn.Module):
+    def __init__(self, config: CN):
+        super().__init__()
+        self.mlp = nn.Sequential(OrderedDict([
+            ("c_fc", nn.Linear(config.n_embd, config.n_embd * 4)),
+            ("gelu", QuickGELU()),
+            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd * 2)),
+            ('dropout', nn.Dropout(config.resid_pdrop)),
+        ]))
+        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+
+    def forward(self, x: torch.Tensor):
+        x = self.mlp(self.ln_1(x))
+        return x
+
 
 class NSP(nn.Module):
     def __init__(self, config: CN):
@@ -66,6 +81,7 @@ class NSP(nn.Module):
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.unmergeblocks = nn.ModuleList([UnMergeBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
@@ -93,13 +109,16 @@ class NSP(nn.Module):
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
-            x_merge = mergeblock(x[bool_indices], x[bool_indices_pj])
+            x1 = x[bool_indices]
+            x2 = x[bool_indices_pj]
+            x_merge = mergeblock(x1, x2)
             x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
+            x = self.resblocks[i](x)
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
             if targets is not None:
-                loss += F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
+                loss += F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
                 loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
