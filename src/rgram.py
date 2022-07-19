@@ -87,7 +87,7 @@ class NSP(nn.Module):
 
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
-            j = i + 1
+            j = i % 4 + 1
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1).view(-1)
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
