@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 
-from src.model import GPT
+from src.rgram import Rgram
 from src.trainer import Trainer
 from src.utils import set_seed, setup_logging, CfgNode as CN
 
@@ -23,14 +23,14 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 3407
-    C.system.work_dir = './out/chargpt'
+    C.system.work_dir = './out/chargram'
 
     # data
     C.data = CharDataset.get_default_config()
 
     # model
-    C.model = GPT.get_default_config()
-    C.model.model_type = 'gpt-nano'
+    C.model = Rgram.get_default_config()
+    C.model.model_type = 'rgram-nano'
 
     # trainer
     C.trainer = Trainer.get_default_config()
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
-    model = GPT(config.model)
+    model = Rgram(config.model)
 
     # construct the trainer object
     trainer = Trainer(config.trainer, model, train_dataset)
@@ -111,7 +111,7 @@ if __name__ == '__main__':
         if trainer.iter_num % 10 == 0:
             print(f"iter_dt {trainer.iter_dt * 1000:.2f}ms; iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}")
 
-        if trainer.iter_num % 500 == 0:
+        if trainer.iter_num % 200 == 0:
             # evaluate both the train and test score
             model.eval()
             with torch.no_grad():
