@@ -65,7 +65,7 @@ class NSP(nn.Module):
         self.resblock = ResidualBlock(config)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        #self.mergeblock = MergeBlock(config)
+        self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
@@ -93,13 +93,13 @@ class NSP(nn.Module):
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
-
             x_merge = mergeblock(x[bool_indices], x[bool_indices_pj])
             x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
             if targets is not None:
+                loss += F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
                 loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
