@@ -24,7 +24,7 @@ class QuickGELU(nn.Module):
         return x * torch.sigmoid(1.702 * x)
 
 
-class ResidualAttentionBlock(nn.Module):
+class ResidualBlock(nn.Module):
     def __init__(self, config: CN):
         super().__init__()
         self.mlp = nn.Sequential(OrderedDict([
@@ -62,10 +62,11 @@ class NSP(nn.Module):
         super().__init__()
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.resblock = ResidualAttentionBlock(config)
+        self.resblock = ResidualBlock(config)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.mergeblock = MergeBlock(config)
+        #self.mergeblock = MergeBlock(config)
+        self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -77,21 +78,23 @@ class NSP(nn.Module):
         x = self.ln_f(x)
         logits = self.lm_head(x)
         loss = None
+
+        # If there are targets use them otherwise create fake last target
         if targets is not None:
             pred_targets = targets
         else:
             pred_targets = torch.cat([idx[1:], torch.empty_like(idx[:1]).fill_(-1)])
-        for i in range(8):
+
+        # TODO: Double check that it's not forward leaking!
+        for i, mergeblock in enumerate(self.mergeblocks):
             j = i + 1
             probs = F.softmax(logits, dim=-1)
-            #_, idx_next = torch.topk(probs, k=1, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
-            idx_next = idx_next.view(t)
-            bool_mask = idx_next == pred_targets
-            bool_indices = bool_mask.nonzero().view(-1)
-            bool_indices = bool_indices[bool_indices < (t[0] - j)]
+            idx_next = torch.multinomial(probs, num_samples=1).view(-1)
+            bool_indices = (idx_next == pred_targets).nonzero().view(-1)
+            bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
-            x_merge = self.mergeblock(x[bool_indices], x[bool_indices_pj])
+
+            x_merge = mergeblock(x[bool_indices], x[bool_indices_pj])
             x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             x = self.ln_f(x)
             logits = self.lm_head(x)
