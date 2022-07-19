@@ -71,13 +71,12 @@ class NSP(nn.Module):
         device = idx.device
         t = idx.size()
 
-        # forward the GPT model itself
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
         x = self.drop(tok_emb)
         x = self.resblock(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-
+        loss = None
         if targets is not None:
             pred_targets = targets
         else:
@@ -96,11 +95,8 @@ class NSP(nn.Module):
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
-
-        # if we are given some desired targets also calculate the loss
-        loss = None
-        if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            if targets is not None:
+                loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
 
