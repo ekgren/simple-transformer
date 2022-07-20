@@ -44,7 +44,6 @@ class ResidualBlock(nn.Module):
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
         self.ln_1 = nn.LayerNorm(config.n_embd)
-        #self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = x + self.mlp(self.ln_1(x))
@@ -61,7 +60,6 @@ class MergeBlock(nn.Module):
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
         self.ln_1 = nn.LayerNorm(config.n_embd * 2)
-        #self.ln_1 = RMSNorm(config.n_embd * 2)
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
@@ -78,7 +76,6 @@ class UnMergeBlock(nn.Module):
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
         self.ln_1 = nn.LayerNorm(config.n_embd)
-        #self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = self.mlp(self.ln_1(x))
@@ -95,15 +92,11 @@ class NSP(nn.Module):
         self.resblock = ResidualBlock(config)
         self.ln_e = RMSNorm(config.n_embd)
         self.ln_f = nn.LayerNorm(config.n_embd)
-        #self.ln_f = RMSNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        #self.mergeblock = MergeBlock(config)
-        #self.outproj = nn.Linear(config.n_embd, config.n_embd)
         self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        #self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
         self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        #self.ln_fs = nn.ModuleList([RMSNorm(config.n_embd) for _ in range(config.n_layer)])
+        self.resblocks_MSE = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -141,8 +134,9 @@ class NSP(nn.Module):
             logits = self.lm_head(x)
 
             if targets is not None:
+                mse_loss = F.mse_loss(self.resblocks_MSE[i](x_merge[1:]), x_merge[:-1])
                 ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                loss = ce_loss if loss is None else loss + ce_loss
+                loss = (ce_loss + mse_loss) if loss is None else (loss + ce_loss + mse_loss)
 
         return logits, loss
 
