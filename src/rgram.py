@@ -24,6 +24,18 @@ class QuickGELU(nn.Module):
         return x * torch.sigmoid(1.702 * x)
 
 
+class RMSNorm(nn.Module):
+    def __init__(self, dim, eps = 1e-8):
+        super().__init__()
+        self.scale = dim ** -0.5
+        self.eps = eps
+        self.g = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        norm = torch.norm(x, dim = -1, keepdim = True) * self.scale
+        return x / norm.clamp(min = self.eps) * self.g
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, config: CN):
         super().__init__()
@@ -33,7 +45,8 @@ class ResidualBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd)
+        #self.ln_1 = nn.LayerNorm(config.n_embd)
+        self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = x + self.mlp(self.ln_1(x))
@@ -49,7 +62,8 @@ class MergeBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+        #self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+        self.ln_1 = RMSNorm(config.n_embd * 2)
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
@@ -65,7 +79,8 @@ class UnMergeBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd * 2)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd)
+        # self.ln_1 = nn.LayerNorm(config.n_embd)
+        self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = self.mlp(self.ln_1(x))
@@ -80,7 +95,9 @@ class NSP(nn.Module):
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.resblock = ResidualBlock(config)
-        self.ln_f = nn.LayerNorm(config.n_embd)
+        self.ln_e = RMSNorm(config.n_embd)
+        #self.ln_f = nn.LayerNorm(config.n_embd)
+        self.ln_f = RMSNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.mergeblock = MergeBlock(config)
         self.outproj = nn.Linear(config.n_embd, config.n_embd)
@@ -93,7 +110,7 @@ class NSP(nn.Module):
         t = idx.size()
 
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
-        x = self.drop(tok_emb)
+        x = self.drop(self.ln_e(tok_emb))
         x = self.resblock(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
