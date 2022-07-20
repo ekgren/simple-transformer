@@ -114,7 +114,8 @@ class NSP(nn.Module):
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
-            x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
+            #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
+            x[bool_indices_pj] = x_merge
             x = self.resblocks[i](x)
             x = self.ln_f(x)
             logits = self.lm_head(x)
