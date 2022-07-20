@@ -36,7 +36,8 @@ class ResidualBlock(nn.Module):
         self.ln_1 = nn.LayerNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
-        x = x + self.mlp(self.ln_1(x))
+        #x = x + self.mlp(self.ln_1(x))
+        x = self.mlp(self.ln_1(x))
         return x
 
 
@@ -53,7 +54,8 @@ class MergeBlock(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
-        x = x2 + self.mlp(self.ln_1(x))
+        #x = x2 + self.mlp(self.ln_1(x))
+        x = self.mlp(self.ln_1(x))
         return x
 
 class UnMergeBlock(nn.Module):
