@@ -81,7 +81,7 @@ class NSP(nn.Module):
         self.resblock = ResidualBlock(config)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         #self.unmergeblocks = nn.ModuleList([UnMergeBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
 
