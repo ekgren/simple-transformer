@@ -120,15 +120,15 @@ class NSP(nn.Module):
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
-            if targets is not None:
-                #mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
-                ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                if loss is not None:
-                    #loss = loss + mse_loss + ce_loss
-                    loss = loss + ce_loss
-                else:
-                    #loss = mse_loss + ce_loss
-                    loss = ce_loss
+        if targets is not None:
+            #mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
+            ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            if loss is not None:
+                #loss = loss + mse_loss + ce_loss
+                loss = loss + ce_loss
+            else:
+                #loss = mse_loss + ce_loss
+                loss = ce_loss
 
         return logits, loss
 
