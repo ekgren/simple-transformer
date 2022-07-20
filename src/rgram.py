@@ -105,7 +105,7 @@ class NSP(nn.Module):
 
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
-            j = i % 8 + 1
+            j = i % 16 + 1
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1).view(-1)
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
@@ -119,9 +119,9 @@ class NSP(nn.Module):
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
-            if targets is not None:
-                loss += F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
-                loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        if targets is not None:
+            loss += F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
+            loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
 
