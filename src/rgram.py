@@ -88,49 +88,28 @@ class NSP(nn.Module):
         super().__init__()
         self.n_embd = config.n_embd
         self.n_layer = config.n_layer
+
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.resblock = ResidualBlock(config)
-        self.ln_e = RMSNorm(config.n_embd)
-        self.ln_f = nn.LayerNorm(config.n_embd)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.ln_e = nn.LayerNorm(config.n_embd)
+        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        #self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     def forward(self, idx, targets=None):
         t = idx.size()
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
-        x = self.drop(self.ln_e(tok_emb))
-        x = self.resblock(x)
-        x = self.ln_f(x)
-        logits = self.lm_head(x)
-
-        # If there are targets use them otherwise create fake last target
-        if targets is not None:
-            pred_targets = targets
-        else:
-            pred_targets = torch.cat([idx[1:], torch.empty_like(idx[:1]).fill_(-1)])
-
-        # TODO: Double check that it's not forward leaking!
+        x = self.ln_e(tok_emb)
+        x = self.drop(x)
         for i, mergeblock in enumerate(self.mergeblocks):
             j = 2**i
-            #with torch.no_grad():
-            #    probs = F.softmax(logits, dim=-1)
-            #    idx_next = torch.multinomial(probs, num_samples=1).view(-1)
-            #    idx_next = idx_next.view(-1)
-            #    bool_indices = (idx_next == pred_targets).nonzero().view(-1)
-            #    bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
-            #    bool_indices_pj = bool_indices + j
-            #x1 = x[bool_indices]
-            #x2 = x[bool_indices_pj]
-
-            x1 = x[:-j]
-            x2 = x[j:]
-            x_merge = mergeblock(x1, x2)
-            merge_ix = torch.arange(j, t[0], dtype=torch.long, device=idx.device)
-            scatter_ix = merge_ix.repeat_interleave(self.n_embd).view(-1, self.n_embd)
-            x = (x + torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge))/2.
+            if j < t[0]:
+                x1 = x[:-j]
+                x2 = x[j:]
+                x_merge = mergeblock(x1, x2)
+                merge_ix = torch.arange(j, t[0], dtype=torch.long, device=idx.device)
+                scatter_ix = merge_ix.repeat_interleave(self.n_embd).view(-1, self.n_embd)
+                x = self.lns[i](x + torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge))
         logits = self.lm_head(x)
         loss = None
         if targets is not None:
