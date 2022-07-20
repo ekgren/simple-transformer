@@ -234,6 +234,9 @@ class Rgram(nn.Module):
                 if pn.endswith('bias'):
                     # all biases will not be decayed
                     no_decay.add(fpn)
+                if pn.endswith('g') and isinstance(m, blacklist_weight_modules):
+                    # all biases will not be decayed
+                    no_decay.add(fpn)
                 elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
                     # weights of whitelist modules will be weight decayed
                     decay.add(fpn)
