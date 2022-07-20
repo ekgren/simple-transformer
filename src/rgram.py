@@ -114,20 +114,24 @@ class NSP(nn.Module):
 
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
-            j = 1 # 2**i
-            with torch.no_grad():
-                probs = F.softmax(logits, dim=-1)
-                idx_next = torch.multinomial(probs, num_samples=1).view(-1)
-                idx_next = idx_next.view(-1)
-                bool_indices = (idx_next == pred_targets).nonzero().view(-1)
-                bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
-                bool_indices_pj = bool_indices + j
-            x1 = x[bool_indices]
-            x2 = x[bool_indices_pj]
+            j = 2**i
+            #with torch.no_grad():
+            #    probs = F.softmax(logits, dim=-1)
+            #    idx_next = torch.multinomial(probs, num_samples=1).view(-1)
+            #    idx_next = idx_next.view(-1)
+            #    bool_indices = (idx_next == pred_targets).nonzero().view(-1)
+            #    bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
+            #    bool_indices_pj = bool_indices + j
+            #x1 = x[bool_indices]
+            #x2 = x[bool_indices_pj]
+
+            x1 = x[:-j]
+            x2 = x[j:]
             x_merge = mergeblock(x1, x2)
-            scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
-            x = torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
-            logits = self.lm_head(x)
+            merge_ix = torch.arange(j, t[0], dtype=torch.long, device=idx.device)
+            scatter_ix = merge_ix.repeat_interleave(self.n_embd).view(-1, self.n_embd)
+            x = (x + torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge))/2.
+        logits = self.lm_head(x)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
