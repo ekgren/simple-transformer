@@ -126,12 +126,13 @@ class NSP(nn.Module):
                 else:
                     new_x.append(x[k])
             x = torch.stack(new_x)
-            x = self.resblocks[i](x)
+            #x = self.resblocks[i](x)
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
             if targets is not None:
-                mse_loss = 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
+                #mse_loss = 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
+                mse_loss = 100 * F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
                 ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
                 if loss is not None:
                     loss = loss + mse_loss + ce_loss
