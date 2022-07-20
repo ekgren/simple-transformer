@@ -108,7 +108,7 @@ class NSP(nn.Module):
             j = i + 1
             #probs = F.softmax(logits, dim=-1)
             #idx_next = torch.multinomial(probs, num_samples=1).view(-1)
-            _, idx_next = torch.topk(logits, k=1, dim=-1)
+            _, idx_next = torch.topk(logits, k=1, dim=-1).view(-1)
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
