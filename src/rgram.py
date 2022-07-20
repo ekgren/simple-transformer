@@ -122,7 +122,7 @@ class NSP(nn.Module):
             torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             x = self.outprojs[i](x)
             x = self.ln_fs[i](x)
-            logits = self.lm_head[i](x)
+            logits = self.lm_heads[i](x)
 
             if targets is not None:
                 mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:].detach())
