@@ -117,13 +117,13 @@ class NSP(nn.Module):
             #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             new_x = []
             x_merge_ix = 0
-            for i in range(x.size(0)):
+            for k in range(x.size(0)):
                 #x[bool_indices_pj] = x_merge
-                if i in bool_indices_pj:
+                if k in bool_indices_pj:
                     new_x.append(x_merge[x_merge_ix])
                     x_merge_ix += 1
                 else:
-                    new_x.append(x[i])
+                    new_x.append(x[k])
             x = torch.stack(new_x)
             x = self.resblocks[i](x)
             x = self.ln_f(x)
