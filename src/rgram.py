@@ -96,7 +96,7 @@ class NSP(nn.Module):
         self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
         self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.resblocks_MSE = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -134,7 +134,8 @@ class NSP(nn.Module):
             logits = self.lm_head(x)
 
             if targets is not None:
-                mse_loss = F.mse_loss(self.resblocks_MSE[i](x_merge[:-1]), x_merge[1:])
+                mse_loss = F.mse_loss(self.resblocks_mse[i](x_merge[:-1]), x_merge[1:])
+                print("mse_loss:", mse_loss)
                 ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
                 combined_loss = mse_loss + ce_loss
                 loss = combined_loss if loss is None else loss + combined_loss
