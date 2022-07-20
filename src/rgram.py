@@ -108,7 +108,7 @@ class NSP(nn.Module):
     def forward(self, idx, targets=None):
         device = idx.device
         t = idx.size()
-
+        loss = None
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
         x = self.drop(self.ln_e(tok_emb))
         x = self.resblock(x)
@@ -140,9 +140,9 @@ class NSP(nn.Module):
             x = self.ln_fs[i](x)
             logits = self.lm_head(x)
 
-        loss = None
-        if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            if targets is not None:
+                ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+                loss = ce_loss if loss is None else loss + ce_loss
 
         return logits, loss
 
