@@ -101,7 +101,7 @@ class NSP(nn.Module):
         #self.outproj = nn.Linear(config.n_embd, config.n_embd)
         self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
+        #self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
         #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
         self.ln_fs = nn.ModuleList([RMSNorm(config.n_embd) for _ in range(config.n_layer)])
 
@@ -135,7 +135,7 @@ class NSP(nn.Module):
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
             scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
-            torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
+            x = torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             x = self.resblocks[i](x)
             x = self.ln_fs[i](x)
             logits = self.lm_head(x)
