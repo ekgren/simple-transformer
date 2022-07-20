@@ -111,6 +111,7 @@ class NSP(nn.Module):
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
+            bool_indices_pj_set = set(bool_indices_pj.tolist())
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
@@ -119,7 +120,7 @@ class NSP(nn.Module):
             x_merge_ix = 0
             for k in range(x.size(0)):
                 #x[bool_indices_pj] = x_merge
-                if k in bool_indices_pj:
+                if k in bool_indices_pj_set:
                     new_x.append(x_merge[x_merge_ix])
                     x_merge_ix += 1
                 else:
