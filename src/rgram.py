@@ -224,7 +224,7 @@ class Rgram(nn.Module):
         decay = set()
         no_decay = set()
         whitelist_weight_modules = (torch.nn.Linear, nn.MultiheadAttention)
-        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, RMSNorm)
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
