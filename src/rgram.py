@@ -123,7 +123,7 @@ class NSP(nn.Module):
 
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
-            j = i % 4 + 1
+            j = 2**i
             with torch.no_grad():
                 probs = F.softmax(logits, dim=-1)
                 idx_next = torch.multinomial(probs, num_samples=1).view(-1)
