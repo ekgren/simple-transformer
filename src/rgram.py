@@ -99,11 +99,12 @@ class NSP(nn.Module):
         #self.ln_f = nn.LayerNorm(config.n_embd)
         self.ln_f = RMSNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.mergeblock = MergeBlock(config)
-        self.outproj = nn.Linear(config.n_embd, config.n_embd)
-        #self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        #self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
+        #self.mergeblock = MergeBlock(config)
+        #self.outproj = nn.Linear(config.n_embd, config.n_embd)
+        self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
+        self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
         #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+        self.ln_fs = nn.ModuleList([RMSNorm(config.n_embd) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -122,7 +123,7 @@ class NSP(nn.Module):
             pred_targets = torch.cat([idx[1:], torch.empty_like(idx[:1]).fill_(-1)])
 
         # TODO: Double check that it's not forward leaking!
-        for i in range(self.n_layer):
+        for i, mergeblock in enumerate(self.mergeblocks):
             j = i + 1
             with torch.no_grad():
                 probs = F.softmax(logits, dim=-1)
@@ -133,11 +134,11 @@ class NSP(nn.Module):
                 bool_indices_pj = bool_indices + j
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
-            x_merge = self.mergeblock(x1, x2)
+            x_merge = mergeblock(x1, x2)
             scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
             torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
-            x = self.outproj(x)
-            x = self.ln_f(x)
+            x = self.outprojs[i](x)
+            x = self.ln_fs[i](x)
             logits = self.lm_head(x)
 
         loss = None
