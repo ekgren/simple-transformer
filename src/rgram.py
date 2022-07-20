@@ -75,6 +75,7 @@ class UnMergeBlock(nn.Module):
 class NSP(nn.Module):
     def __init__(self, config: CN):
         super().__init__()
+        self.n_embd = config.n_embd
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.resblock = ResidualBlock(config)
@@ -114,7 +115,9 @@ class NSP(nn.Module):
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
-            x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
+            #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
+            scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
+            torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
