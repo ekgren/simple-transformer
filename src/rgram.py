@@ -139,7 +139,7 @@ class NSP(nn.Module):
                         mse_loss = F.mse_loss(self.resblocks_mse[i](x_merge[:-1]), x_merge[1:])
                     else:
                         mse_loss = 0.0
-
+                    ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
                     combined_loss = mse_loss + ce_loss
                     loss = combined_loss if loss is None else loss + combined_loss
 
