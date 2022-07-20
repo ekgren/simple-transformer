@@ -134,9 +134,10 @@ class NSP(nn.Module):
             logits = self.lm_head(x)
 
             if targets is not None:
-                mse_loss = F.mse_loss(self.resblocks_MSE[i](x_merge[1:]), x_merge[:-1])
+                mse_loss = F.mse_loss(self.resblocks_MSE[i](x_merge[:-1]), x_merge[1:])
                 ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                loss = (ce_loss + mse_loss) if loss is None else (loss + ce_loss + mse_loss)
+                combined_loss = mse_loss + ce_loss
+                loss = combined_loss if loss is None else loss + combined_loss
 
         return logits, loss
 
