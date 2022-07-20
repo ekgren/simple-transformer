@@ -117,7 +117,7 @@ class NSP(nn.Module):
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
-            x = torch.scatter(x, dim=0, index=bool_indices_pj, src=x_merge)
+            x = torch.scatter(x, dim=0, index=bool_indices_pj.repeat(1, x.size(1)), src=x_merge)
             #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             #new_x = []
             #x_merge_ix = 0
