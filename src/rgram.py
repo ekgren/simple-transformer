@@ -37,7 +37,6 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = x + self.mlp(self.ln_1(x))
-        #x = self.mlp(self.ln_1(x))
         return x
 
 
@@ -55,7 +54,6 @@ class MergeBlock(nn.Module):
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
         x = x2 + self.mlp(self.ln_1(x))
-        #x = self.mlp(self.ln_1(x))
         return x
 
 class UnMergeBlock(nn.Module):
@@ -106,43 +104,27 @@ class NSP(nn.Module):
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
             j = i + 1
-            #probs = F.softmax(logits, dim=-1)
+            probs = F.softmax(logits, dim=-1)
             #idx_next = torch.multinomial(probs, num_samples=1).view(-1)
-            _, idx_next = torch.topk(logits, k=1, dim=-1)
+            _, idx_next = torch.topk(probs, k=1, dim=-1)
             idx_next = idx_next.view(-1)
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
-            #bool_indices_pj_set = set(bool_indices_pj.tolist())
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
-            x = torch.scatter(x, dim=0, index=bool_indices_pj.repeat(1, x.shape[1]), src=x_merge)
-            #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
-            #new_x = []
-            #x_merge_ix = 0
-            #for k in range(x.size(0)):
-            #    #x[bool_indices_pj] = x_merge
-            #    if k in bool_indices_pj_set:
-            #        new_x.append(x_merge[x_merge_ix])
-            #        x_merge_ix += 1
-            #    else:
-            #        new_x.append(x[k])
-            #x = torch.stack(new_x)
-            #x = self.resblocks[i](x)
+            x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
             if targets is not None:
-                #mse_loss = 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
-                #mse_loss = 100 * F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
+                mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:])
                 ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
                 if loss is not None:
-                    #loss = loss + mse_loss + ce_loss
-                    loss = loss + ce_loss
+                    loss = loss + mse_loss + ce_loss
                 else:
-                    #loss = mse_loss + ce_loss
-                    loss = ce_loss
+                    loss = mse_loss + ce_loss
 
         return logits, loss
 
