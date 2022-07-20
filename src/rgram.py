@@ -85,8 +85,8 @@ class NSP(nn.Module):
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
         self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
         self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.lm_heads = nn.ModuleList([nn.Linear(config.n_embd, config.vocab_size, bias=False) for _ in range(config.n_layer)])
-        self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        #self.lm_heads = nn.ModuleList([nn.Linear(config.n_embd, config.vocab_size, bias=False) for _ in range(config.n_layer)])
+        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -108,13 +108,13 @@ class NSP(nn.Module):
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
             j = i + 1
-            probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1).view(-1)
-            #_, idx_next = torch.topk(probs, k=1, dim=-1)
-            idx_next = idx_next.view(-1)
-            bool_indices = (idx_next == pred_targets).nonzero().view(-1)
-            bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
-            bool_indices_pj = bool_indices + j
+            with torch.no_grad():
+                probs = F.softmax(logits, dim=-1)
+                idx_next = torch.multinomial(probs, num_samples=1).view(-1)
+                idx_next = idx_next.view(-1)
+                bool_indices = (idx_next == pred_targets).nonzero().view(-1)
+                bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
+                bool_indices_pj = bool_indices + j
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
@@ -122,15 +122,17 @@ class NSP(nn.Module):
             torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             x = self.outprojs[i](x)
             x = self.ln_fs[i](x)
-            logits = self.lm_heads[i](x)
+            logits = self.lm_heads(x)
 
-            if targets is not None:
-                mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:].detach())
-                ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                if loss is not None:
-                    loss = loss + mse_loss + ce_loss
-                else:
-                    loss = mse_loss + ce_loss
+        if targets is not None:
+            #mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:].detach())
+            ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            if loss is not None:
+                #loss = loss + mse_loss + ce_loss
+                loss = loss + ce_loss
+            else:
+                #loss = mse_loss + ce_loss
+                loss = ce_loss
 
         return logits, loss
 
