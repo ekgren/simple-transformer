@@ -120,7 +120,7 @@ class NSP(nn.Module):
             logits = self.lm_head(x)
 
         if targets is not None:
-            loss += F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
+            loss += 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
             loss += F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
