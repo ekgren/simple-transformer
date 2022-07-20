@@ -99,9 +99,7 @@ class NSP(nn.Module):
         #self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
-        device = idx.device
         t = idx.size()
-        loss = None
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
         x = self.drop(self.ln_e(tok_emb))
         x = self.resblock(x)
@@ -130,6 +128,7 @@ class NSP(nn.Module):
             scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
             x = torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             logits = self.lm_head(x)
+            print(logits)
 
         loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
