@@ -113,21 +113,22 @@ class NSP(nn.Module):
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
             bool_indices = bool_indices[bool_indices < (t[0] - j)]  # Make sure we don't go out of bounds
             bool_indices_pj = bool_indices + j
-            bool_indices_pj_set = set(bool_indices_pj.tolist())
+            #bool_indices_pj_set = set(bool_indices_pj.tolist())
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
+            x = torch.scatter(x, dim=0, index=bool_indices_pj, src=x_merge)
             #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
-            new_x = []
-            x_merge_ix = 0
-            for k in range(x.size(0)):
-                #x[bool_indices_pj] = x_merge
-                if k in bool_indices_pj_set:
-                    new_x.append(x_merge[x_merge_ix])
-                    x_merge_ix += 1
-                else:
-                    new_x.append(x[k])
-            x = torch.stack(new_x)
+            #new_x = []
+            #x_merge_ix = 0
+            #for k in range(x.size(0)):
+            #    #x[bool_indices_pj] = x_merge
+            #    if k in bool_indices_pj_set:
+            #        new_x.append(x_merge[x_merge_ix])
+            #        x_merge_ix += 1
+            #    else:
+            #        new_x.append(x[k])
+            #x = torch.stack(new_x)
             #x = self.resblocks[i](x)
             x = self.ln_f(x)
             logits = self.lm_head(x)
