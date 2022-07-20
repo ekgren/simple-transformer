@@ -43,8 +43,8 @@ class ResidualBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        #self.ln_1 = nn.LayerNorm(config.n_embd)
-        self.ln_1 = RMSNorm(config.n_embd)
+        self.ln_1 = nn.LayerNorm(config.n_embd)
+        #self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = x + self.mlp(self.ln_1(x))
@@ -60,8 +60,8 @@ class MergeBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        #self.ln_1 = nn.LayerNorm(config.n_embd * 2)
-        self.ln_1 = RMSNorm(config.n_embd * 2)
+        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+        #self.ln_1 = RMSNorm(config.n_embd * 2)
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
@@ -77,8 +77,8 @@ class UnMergeBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd * 2)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        # self.ln_1 = nn.LayerNorm(config.n_embd)
-        self.ln_1 = RMSNorm(config.n_embd)
+        self.ln_1 = nn.LayerNorm(config.n_embd)
+        #self.ln_1 = RMSNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
         x = self.mlp(self.ln_1(x))
@@ -94,16 +94,16 @@ class NSP(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
         self.resblock = ResidualBlock(config)
         self.ln_e = RMSNorm(config.n_embd)
-        #self.ln_f = nn.LayerNorm(config.n_embd)
-        self.ln_f = RMSNorm(config.n_embd)
+        self.ln_f = nn.LayerNorm(config.n_embd)
+        #self.ln_f = RMSNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         #self.mergeblock = MergeBlock(config)
         #self.outproj = nn.Linear(config.n_embd, config.n_embd)
         self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
         #self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
-        #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.ln_fs = nn.ModuleList([RMSNorm(config.n_embd) for _ in range(config.n_layer)])
+        self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+        #self.ln_fs = nn.ModuleList([RMSNorm(config.n_embd) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
