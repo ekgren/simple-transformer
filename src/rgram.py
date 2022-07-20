@@ -63,7 +63,8 @@ class MergeBlock(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
-        x = x2 + self.mlp(self.ln_1(x))
+        #x = x2 + self.mlp(self.ln_1(x))
+        x = self.mlp(self.ln_1(x))
         return x
 
 class UnMergeBlock(nn.Module):
@@ -95,7 +96,6 @@ class NSP(nn.Module):
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
         #self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
