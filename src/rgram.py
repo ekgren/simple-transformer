@@ -36,8 +36,8 @@ class ResidualBlock(nn.Module):
         self.ln_1 = nn.LayerNorm(config.n_embd)
 
     def forward(self, x: torch.Tensor):
-        #x = x + self.mlp(self.ln_1(x))
-        x = self.mlp(self.ln_1(x))
+        x = x + self.mlp(self.ln_1(x))
+        #x = self.mlp(self.ln_1(x))
         return x
 
 
@@ -54,8 +54,8 @@ class MergeBlock(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         x = torch.cat([x1, x2], dim=-1)
-        #x = x2 + self.mlp(self.ln_1(x))
-        x = self.mlp(self.ln_1(x))
+        x = x2 + self.mlp(self.ln_1(x))
+        #x = self.mlp(self.ln_1(x))
         return x
 
 class UnMergeBlock(nn.Module):
@@ -105,7 +105,7 @@ class NSP(nn.Module):
 
         # TODO: Double check that it's not forward leaking!
         for i, mergeblock in enumerate(self.mergeblocks):
-            j = i % 16 + 1
+            j = i + 1
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1).view(-1)
             bool_indices = (idx_next == pred_targets).nonzero().view(-1)
@@ -119,10 +119,13 @@ class NSP(nn.Module):
             x = self.ln_f(x)
             logits = self.lm_head(x)
 
-        if targets is not None:
-            mse_loss = 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
-            ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            loss = mse_loss + ce_loss
+            if targets is not None:
+                mse_loss = 100 * F.mse_loss(self.unmergeblocks[i](x_merge[:-1]), torch.cat([x1, x2], dim=-1)[1:])
+                ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+                if loss is not None:
+                    loss = loss + mse_loss + ce_loss
+                else:
+                    loss = mse_loss + ce_loss
 
         return logits, loss
 
