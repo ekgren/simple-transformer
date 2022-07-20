@@ -81,8 +81,8 @@ class NSP(nn.Module):
         self.resblock = ResidualBlock(config)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
-        self.unmergeblocks = nn.ModuleList([UnMergeBlock(config) for _ in range(config.n_layer)])
+        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        #self.unmergeblocks = nn.ModuleList([UnMergeBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
@@ -115,7 +115,6 @@ class NSP(nn.Module):
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
-            #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
             scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
             torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
             x = self.ln_f(x)
