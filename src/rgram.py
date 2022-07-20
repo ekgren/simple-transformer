@@ -115,7 +115,16 @@ class NSP(nn.Module):
             x2 = x[bool_indices_pj]
             x_merge = mergeblock(x1, x2)
             #x[bool_indices_pj] += -x[bool_indices_pj] + x_merge
-            x[bool_indices_pj] = x_merge
+            new_x = []
+            x_merge_ix = 0
+            for i in range(x.size(0)):
+                #x[bool_indices_pj] = x_merge
+                if i in bool_indices_pj:
+                    new_x.append(x_merge[x_merge_ix])
+                    x_merge_ix += 1
+                else:
+                    new_x.append(x[i])
+            x = torch.stack(new_x)
             x = self.resblocks[i](x)
             x = self.ln_f(x)
             logits = self.lm_head(x)
