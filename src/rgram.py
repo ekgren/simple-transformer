@@ -76,17 +76,17 @@ class NSP(nn.Module):
     def __init__(self, config: CN):
         super().__init__()
         self.n_embd = config.n_embd
+        self.n_layer = config.n_layer
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.resblock = ResidualBlock(config)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        #self.resblock_out = ResidualBlock(config)
-        self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
-        self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        #self.lm_heads = nn.ModuleList([nn.Linear(config.n_embd, config.vocab_size, bias=False) for _ in range(config.n_layer)])
-        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        self.mergeblock = MergeBlock(config)
+        self.outproj = nn.Linear(config.n_embd, config.n_embd)
+        #self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
+        #self.outprojs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
+        #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -97,7 +97,6 @@ class NSP(nn.Module):
         x = self.resblock(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
-        loss = None
 
         # If there are targets use them otherwise create fake last target
         if targets is not None:
@@ -106,7 +105,7 @@ class NSP(nn.Module):
             pred_targets = torch.cat([idx[1:], torch.empty_like(idx[:1]).fill_(-1)])
 
         # TODO: Double check that it's not forward leaking!
-        for i, mergeblock in enumerate(self.mergeblocks):
+        for i in range(self.n_layer):
             j = i + 1
             with torch.no_grad():
                 probs = F.softmax(logits, dim=-1)
@@ -117,22 +116,16 @@ class NSP(nn.Module):
                 bool_indices_pj = bool_indices + j
             x1 = x[bool_indices]
             x2 = x[bool_indices_pj]
-            x_merge = mergeblock(x1, x2)
+            x_merge = self.mergeblock(x1, x2)
             scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
             torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
-            x = self.outprojs[i](x)
-            x = self.ln_fs[i](x)
+            x = self.outproj(x)
+            x = self.ln_f(x)
             logits = self.lm_head(x)
 
+        loss = None
         if targets is not None:
-            #mse_loss = F.mse_loss(self.resblocks[i](x_merge[:-1]), x_merge[1:].detach())
-            ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            if loss is not None:
-                #loss = loss + mse_loss + ce_loss
-                loss = loss + ce_loss
-            else:
-                #loss = mse_loss + ce_loss
-                loss = ce_loss
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
 
