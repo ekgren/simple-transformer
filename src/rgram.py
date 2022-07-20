@@ -93,10 +93,10 @@ class NSP(nn.Module):
         self.ln_e = RMSNorm(config.n_embd)
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        #self.resblocks = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
         self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
-        self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
+        #self.ln_fs = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+        #self.resblocks_mse = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layer)])
 
     def forward(self, idx, targets=None):
         device = idx.device
@@ -130,19 +130,19 @@ class NSP(nn.Module):
             if x_merge.size(0) > 0 or i == 0:
                 scatter_ix = bool_indices_pj.repeat_interleave(self.n_embd).view(-1, self.n_embd)
                 x = torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge)
-                x = self.resblocks[i](x)
-                x = self.ln_fs[i](x)
+                #x = self.resblocks[i](x)
+                #x = self.ln_fs[i](x)
                 logits = self.lm_head(x)
 
-                if targets is not None:
-                    if x_merge.size(0) > 0:
-                        mse_loss = F.mse_loss(self.resblocks_mse[i](x_merge[:-1]), x_merge[1:])
-                    else:
-                        mse_loss = 0.0
-                    ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                    combined_loss = mse_loss + ce_loss
-                    loss = combined_loss if loss is None else loss + combined_loss
-
+                #if targets is not None:
+                #    if x_merge.size(0) > 0:
+                #        mse_loss = F.mse_loss(self.resblocks_mse[i](x_merge[:-1]), x_merge[1:])
+                #    else:
+                #        mse_loss = 0.0
+                #    ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+                #    combined_loss = mse_loss + ce_loss
+                #    loss = combined_loss if loss is None else loss + combined_loss
+        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
 
 
