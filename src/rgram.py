@@ -1,10 +1,8 @@
 """
-Full definition of a GPT Language Model, all of it in this single file.
+Full definition of an Rgram model
 
 References:
-1) the official GPT-2 TensorFlow implementation released by OpenAI:
-https://github.com/openai/gpt-2/blob/master/src/model.py
-2) huggingface/transformers PyTorch implementation:
+1) huggingface/transformers PyTorch implementation:
 https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
 from collections import OrderedDict
@@ -19,122 +17,70 @@ from src.utils import CfgNode as CN
 # -----------------------------------------------------------------------------
 
 
+def left_pad(xs, dim, pads, fill=None):
+    """ Left pad and cut tensor along a given dimension. Can replace with F.pad()? """
+    shape = xs.shape
+    length = shape[dim]
+    padded = length if pads > length else pads        # Find more explanatory name for this variable.
+    unpadded = 0 if pads > length else length - pads  # Find more explanatory name for this variable.
+    padshape = (*shape[:dim], padded, *shape[dim + 1:])
+    pad_tensor = xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
+    x = xs.narrow(dim, 0, unpadded)
+    return torch.cat([pad_tensor, x], dim)
+
+
+def right_pad(xs, dim, pads, fill=None):
+    """ Right pad and cut tensor along a given dimension. Can replace with F.pad()? """
+    shape = xs.shape
+    length = shape[dim]
+    padded = length if pads > length else pads        # Find more explanatory name for this variable.
+    unpadded = 0 if pads > length else length - pads  # Find more explanatory name for this variable.
+    padshape = (*shape[:dim], padded, *shape[dim + 1:])
+    pad_tensor = xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
+    x = xs.narrow(dim, padded, unpadded)
+    return torch.cat([x, pad_tensor], dim)
+
+
 class QuickGELU(nn.Module):
     def forward(self, x: torch.Tensor):
         return x * torch.sigmoid(1.702 * x)
 
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps = 1e-8):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, x):
-        norm = torch.norm(x, dim=-1, keepdim=True)
-        return x / norm.clamp(min=self.eps)
-
-
-class ResidualBlock(nn.Module):
-    def __init__(self, config: CN):
-        super().__init__()
-        self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(config.n_embd, config.n_embd * 4)),
-            ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
-            ('dropout', nn.Dropout(config.resid_pdrop)),
-        ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd)
-
-    def forward(self, x: torch.Tensor):
-        x = x + self.mlp(self.ln_1(x))
-        return x
-
-
-#class MergeBlock(nn.Module):
-#    def __init__(self, config: CN):
-#        super().__init__()
-#        self.mlp = nn.Sequential(OrderedDict([
-#            ("c_fc", nn.Linear(config.n_embd * 2, config.n_embd * 4)),
-#            ("gelu", QuickGELU()),
-#            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
-#            ('dropout', nn.Dropout(config.resid_pdrop)),
-#        ]))
-#        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
-#
-#    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
-#        x = torch.cat([x1, x2], dim=-1)
-#        #x = x2 + self.mlp(self.ln_1(x))
-#        x = self.mlp(self.ln_1(x))
-#        return x
-
-
-def left_pad(xs, dim, pads, fill=None):
-    shape = xs.shape
-    L = shape[dim]
-
-    if pads > L:
-        padded = L
-        unpadded = 0
-    else:
-        padded = pads
-        unpadded = L - pads
-
-    
-    padshape = (*shape[:dim], padded, *shape[dim+1:])
-
-    return torch.cat(
-        (
-            xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill),
-            xs.narrow(dim, 0, unpadded)
-        ), dim)
-
-def right_pad(xs, dim, pads, fill=None):
-    shape = xs.shape
-    L = shape[dim]
-
-    if pads > L:
-        padded = L
-        unpadded = 0
-    else:
-        padded = pads
-        unpadded = L - pads
-
-    padshape = (*shape[:dim], padded, *shape[dim+1:])
-
-    return torch.cat(
-        (
-            xs.narrow(dim, padded, unpadded),
-            xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
-        ), dim)
-
-
 class MergeBlock(nn.Module):
-    def __init__(self, config: CN, level):
+    def __init__(self, config: CN, level: int = 0) -> None:
         super().__init__()
         self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(config.n_embd * 2, config.n_embd * 4)),
+            ("c_fc", nn.Linear(config.n_embd * 2, config.n_mlp)),
             ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
+            ("c_proj", nn.Linear(config.n_mlp, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+        self.ln = nn.LayerNorm(config.n_embd * 2)
         self.shift = 2**level
 
-    def forward(self, x, seq_ids):
-        l = left_pad(x, dim=0, pads=self.shift)
-        r = x
-        x_merged = self.mlp(self.ln_1(torch.cat((l, r), dim=-1)))
-        x_out = torch.where(
-                (seq_ids == left_pad(seq_ids, dim=0, pads=self.shift)).unsqueeze(1).broadcast_to(x.shape),
-                x_merged, x
-                )
+    # TODO: Come up with a clear explanatory name for seq_ids
+    def forward(self, input: torch.Tensor, seq_ids=None) -> torch.Tensor:
+        # Zero pad to the left in the seq dimension and remove the last shift elements
+        x_left_padded = F.pad(input, (0, 0, self.shift, 0))[:-self.shift, :]
+        x_pairs = torch.cat([x_left_padded, input], dim=-1)
+        x_merged = self.mlp(self.ln(x_pairs))
+        x_out = self.mask(input, x_merged, seq_ids) if seq_ids is not None else x_merged
         return x_out
+
+    # TODO: Come up with a clear explanatory name for seq_ids
+    def mask(self, input: torch.Tensor, x_merged: torch.Tensor, seq_ids: torch.Tensor) -> torch.Tensor:
+        """ Mask the input to prevent out of bound memory accesses """
+        # Zero pad to the left in the seq dimension and remove the last shift elements
+        seq_ids_left_padded = F.pad(seq_ids, (self.shift, 0))[:-self.shift]
+        seq_ids_bool = (seq_ids == seq_ids_left_padded).unsqueeze(1).broadcast_to(input.shape)  # Do we need the unsqueeze?
+        return torch.where(seq_ids_bool, x_merged, input)
 
 
 class NSP(nn.Module):
-    def __init__(self, config: CN):
+    """ Next Step Prediction """
+    def __init__(self, config: CN) -> None:
         super().__init__()
-        self.n_embd = config.n_embd
+        self.n_embd  = config.n_embd
         self.n_layer = config.n_layer
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
@@ -144,13 +90,13 @@ class NSP(nn.Module):
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-
-    def forward(self, idx, seq_ids, targets=None):
-        tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
+    # TODO: Come up with a clear explanatory name for seq_ids
+    def forward(self, idx: torch.Tensor, seq_ids=None, targets=None):
+        tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         x = self.ln_e(tok_emb)
         x = self.drop(x)
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            x = ln(mergeblock(x, seq_ids) + x)
+            x = ln(mergeblock(x, seq_ids) + x)  # merge -> residual -> layer norm
         logits = self.lm_head(x)
         loss = None
         if targets is not None:
@@ -170,7 +116,6 @@ class Rgram(nn.Module):
         # either model_type or (n_layer, n_head, n_embd) must be given in the config
         C.model_type = 'rgram'
         C.n_layer = None
-        C.n_head = None
         C.n_embd = None
         # these options must be filled in externally
         C.vocab_size = None
@@ -188,15 +133,15 @@ class Rgram(nn.Module):
         self.block_size = config.block_size
 
         type_given = config.model_type is not None
-        params_given = all([config.n_layer is not None, config.n_head is not None, config.n_embd is not None])
+        params_given = all([config.n_layer is not None, config.n_embd is not None])
         assert (type_given and not params_given) or (not type_given and params_given) # exactly one of these
         if type_given:
             # translate from model_type to detailed configuration
             config.merge_from_dict({
                 # names follow the huggingface naming conventions
-                'rgram-mini':     dict(n_layer=6, n_head=6, n_embd=192),
-                'rgram-micro':    dict(n_layer=4, n_head=4, n_embd=128),
-                'rgram-nano':     dict(n_layer=1, n_head=3, n_embd=48),
+                'rgram-mini':     dict(n_layer=6, n_embd=192, n_mlp=4*192),
+                'rgram-micro':    dict(n_layer=4, n_embd=128, n_mlp=4*128),
+                'rgram-nano':     dict(n_layer=2, n_embd=48, n_mlp=4*48),
             }[config.model_type])
 
         self.nsp = NSP(config)
@@ -235,7 +180,7 @@ class Rgram(nn.Module):
         decay = set()
         no_decay = set()
         whitelist_weight_modules = (torch.nn.Linear, nn.MultiheadAttention)
-        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, RMSNorm)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
@@ -243,9 +188,6 @@ class Rgram(nn.Module):
                 # we will see the same tensors p many many times. but doing it this way
                 # allows us to know which parent module any tensor p belongs to...
                 if pn.endswith('bias'):
-                    # all biases will not be decayed
-                    no_decay.add(fpn)
-                if pn.endswith('g') and isinstance(m, blacklist_weight_modules):
                     # all biases will not be decayed
                     no_decay.add(fpn)
                 elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):

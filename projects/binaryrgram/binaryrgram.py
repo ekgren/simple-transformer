@@ -23,10 +23,10 @@ def get_config():
     # system
     C.system = CN()
     C.system.seed = 3407
-    C.system.work_dir = './out/binaryrgram'
+    C.system.work_dir = './out/chargram'
 
     # data
-    C.data = BinaryDataset.get_default_config()
+    C.data = CharDataset.get_default_config()
 
     # model
     C.model = Rgram.get_default_config()
@@ -44,7 +44,7 @@ def get_config():
 
 # -----------------------------------------------------------------------------
 
-class BinaryDataset(Dataset):
+class CharDataset(Dataset):
     """
     Emits batches of characters
     """
@@ -58,14 +58,14 @@ class BinaryDataset(Dataset):
     def __init__(self, config, data):
         self.config = config
 
-        #chars = sorted(list(set(data)))
-        data_size, vocab_size = len(data.encode('utf-8')), 256
+        chars = sorted(list(set(data)))
+        data_size, vocab_size = len(data), len(chars)
         print('data has %d characters, %d unique.' % (data_size, vocab_size))
 
-        #self.stoi = { ch:i for i,ch in enumerate(chars) }
-        #self.itos = { i:ch for i,ch in enumerate(chars) }
+        self.stoi = { ch:i for i,ch in enumerate(chars) }
+        self.itos = { i:ch for i,ch in enumerate(chars) }
         self.vocab_size = vocab_size
-        self.data = list(data.encode('utf-8'))
+        self.data = data
 
     def get_vocab_size(self):
         return self.vocab_size
@@ -79,9 +79,11 @@ class BinaryDataset(Dataset):
     def __getitem__(self, idx):
         # grab a chunk of (block_size + 1) characters from the data
         chunk = self.data[idx:idx + self.config.block_size + 1]
+        # encode every character to an integer
+        dix = [self.stoi[s] for s in chunk]
         # return as tensors
-        x = torch.tensor(chunk[:-1], dtype=torch.long)
-        y = torch.tensor(chunk[1:], dtype=torch.long)
+        x = torch.tensor(dix[:-1], dtype=torch.long)
+        y = torch.tensor(dix[1:], dtype=torch.long)
         return x, y
 
 # -----------------------------------------------------------------------------
@@ -97,7 +99,7 @@ if __name__ == '__main__':
 
     # construct the training dataset
     text = open('input.txt', 'r').read() # don't worry we won't run out of file handles
-    train_dataset = BinaryDataset(config.data, text)
+    train_dataset = CharDataset(config.data, text)
 
     # construct the model
     config.model.vocab_size = train_dataset.get_vocab_size()
@@ -119,12 +121,9 @@ if __name__ == '__main__':
             with torch.no_grad():
                 # sample from the model...
                 context = "O God, O God!"
-                x = torch.tensor(list(context.encode('utf-8')), dtype=torch.long)[None,...].to(trainer.device)
+                x = torch.tensor([train_dataset.stoi[s] for s in context], dtype=torch.long)[None,...].to(trainer.device)
                 y = model.generate(x, 500, temperature=1.0, do_sample=True, top_k=10)[0]
-                try:
-                    completion = bytes(y.tolist()).decode('utf-8')
-                except:
-                    completion = '<invalid utf-8>'
+                completion = ''.join([train_dataset.itos[int(i)] for i in y])
                 print(completion)
             # save the latest model
             print("saving model")
