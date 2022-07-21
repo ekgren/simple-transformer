@@ -50,8 +50,66 @@ class ResidualBlock(nn.Module):
         return x
 
 
+#class MergeBlock(nn.Module):
+#    def __init__(self, config: CN):
+#        super().__init__()
+#        self.mlp = nn.Sequential(OrderedDict([
+#            ("c_fc", nn.Linear(config.n_embd * 2, config.n_embd * 4)),
+#            ("gelu", QuickGELU()),
+#            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd)),
+#            ('dropout', nn.Dropout(config.resid_pdrop)),
+#        ]))
+#        self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+#
+#    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
+#        x = torch.cat([x1, x2], dim=-1)
+#        #x = x2 + self.mlp(self.ln_1(x))
+#        x = self.mlp(self.ln_1(x))
+#        return x
+
+
+def left_pad(xs, dim, pads, fill=None):
+    shape = xs.shape
+    L = shape[dim]
+
+    if pads > L:
+        padded = L
+        unpadded = 0
+    else:
+        padded = pads
+        unpadded = L - pads
+
+    
+    padshape = (*shape[:dim], padded, *shape[dim+1:])
+
+    return torch.cat(
+        (
+            xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill),
+            xs.narrow(dim, 0, unpadded)
+        ), dim)
+
+def right_pad(xs, dim, pads, fill=None):
+    shape = xs.shape
+    L = shape[dim]
+
+    if pads > L:
+        padded = L
+        unpadded = 0
+    else:
+        padded = pads
+        unpadded = L - pads
+
+    padshape = (*shape[:dim], padded, *shape[dim+1:])
+
+    return torch.cat(
+        (
+            xs.narrow(dim, padded, unpadded),
+            xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
+        ), dim)
+
+
 class MergeBlock(nn.Module):
-    def __init__(self, config: CN):
+    def __init__(self, config: CN, level):
         super().__init__()
         self.mlp = nn.Sequential(OrderedDict([
             ("c_fc", nn.Linear(config.n_embd * 2, config.n_embd * 4)),
@@ -60,27 +118,17 @@ class MergeBlock(nn.Module):
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
         self.ln_1 = nn.LayerNorm(config.n_embd * 2)
+        self.shift = 2**level
 
-    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
-        x = torch.cat([x1, x2], dim=-1)
-        #x = x2 + self.mlp(self.ln_1(x))
-        x = self.mlp(self.ln_1(x))
-        return x
-
-class UnMergeBlock(nn.Module):
-    def __init__(self, config: CN):
-        super().__init__()
-        self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(config.n_embd, config.n_embd * 4)),
-            ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(config.n_embd * 4, config.n_embd * 2)),
-            ('dropout', nn.Dropout(config.resid_pdrop)),
-        ]))
-        self.ln_1 = nn.LayerNorm(config.n_embd)
-
-    def forward(self, x: torch.Tensor):
-        x = self.mlp(self.ln_1(x))
-        return x
+    def forward(self, x, seq_ids):
+        l = left_pad(x, dim=0, pads=self.shift)
+        r = x
+        x_merged = self.mlp(self.ln_1(torch.cat((l, r), dim=-1)))
+        x_out = torch.where(
+                (seq_ids == left_pad(seq_ids, dim=0, pads=self.shift)).unsqueeze(1).broadcast_to(x.shape),
+                x_merged, x
+                )
+        return x_out
 
 
 class NSP(nn.Module):
@@ -93,23 +141,16 @@ class NSP(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = nn.LayerNorm(config.n_embd)
         self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.mergeblocks = nn.ModuleList([MergeBlock(config) for _ in range(config.n_layer)])
+        self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-    def forward(self, idx, targets=None):
-        t = idx.size()
+
+    def forward(self, idx, seq_ids, targets=None):
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
         x = self.ln_e(tok_emb)
         x = self.drop(x)
-        for i, mergeblock in enumerate(self.mergeblocks):
-            j = 2**i
-            if j < t[0]:
-                x1 = x[:-j]
-                x2 = x[j:]
-                x_merge = mergeblock(x1, x2)
-                merge_ix = torch.arange(j, t[0], dtype=torch.long, device=idx.device)
-                scatter_ix = merge_ix.repeat_interleave(self.n_embd).view(-1, self.n_embd)
-                x = self.lns[i](x + torch.scatter(input=x, dim=0, index=scatter_ix, src=x_merge))
+        for ln, mergeblock in zip(self.lns, self.mergeblocks):
+            x = ln(mergeblock(x, seq_ids) + x)
         logits = self.lm_head(x)
         loss = None
         if targets is not None:
@@ -231,10 +272,8 @@ class Rgram(nn.Module):
         return optimizer
 
     def forward(self, idx, targets=None):
-        idx = idx.view(-1)
-        if targets is not None:
-            targets = targets.view(-1)
-        logits, loss = self.nsp(idx, targets)
+        idx, seq_ids = idx.unbind(0)
+        logits, loss = self.nsp(idx, seq_ids, targets)
         return logits, loss
 
     @torch.no_grad()
@@ -249,7 +288,8 @@ class Rgram(nn.Module):
             # if the sequence context is growing too long we must crop it at block_size
             #idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
             # forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx)
+            seq_ids = idx.new_ones(idx.shape)
+            logits, _ = self(torch.stack((idx, seq_ids)))
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[-1, :] / temperature
             # optionally crop the logits to only the top k options
