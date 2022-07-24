@@ -61,6 +61,7 @@ class Trainer:
         print("running on device", self.device)
 
         # variables that will be assigned to trainer class later for logging and etc
+        self.loss = None
         self.iter_num = 0
         self.iter_time = 0.0
         self.iter_dt = 0.0
@@ -108,12 +109,12 @@ class Trainer:
                 x, y = batch
 
                 # forward the model
-                logits, self.loss = model(x, y)
-                self.loss = self.loss / config.grad_accum_steps
-
+                logits, loss = model(x, y)
+                loss = loss / config.grad_accum_steps
+                self.loss = loss.item() if self.loss is None else self.loss + loss.item()
                 # backprop and update the parameters
                 model.zero_grad(set_to_none=True)
-                self.loss.backward()
+                loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
 
             optimizer.step()
