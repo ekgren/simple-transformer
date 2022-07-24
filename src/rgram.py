@@ -98,7 +98,7 @@ class NSP(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = nn.LayerNorm(config.n_embd)
 
-        self.mergeblocks = nn.ModuleList([MergeBlocks(config, level=i) for i in range(config.n_merges)])
+        self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
         self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_merges)])
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
