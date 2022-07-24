@@ -261,7 +261,7 @@ def convert_weights(model: nn.Module):
             if module.bias is not None:
                 module.bias.data = module.bias.data.half()
 
-        if isinstance(module, (nn.Embedding,)):
-            module.weight.data = module.weight.data.half()
+        #if isinstance(module, (nn.Embedding,)):
+        #    module.weight.data = module.weight.data.half()
 
     model.apply(_convert_weights_to_fp16)
