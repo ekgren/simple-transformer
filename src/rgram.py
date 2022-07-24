@@ -76,6 +76,17 @@ class MergeBlock(nn.Module):
         return torch.where(seq_ids_bool, x_merged, input)
 
 
+class MergeBlocks(nn.Module):
+    def __init__(self, config: CN) -> None:
+        super().__init__()
+        self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
+        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+
+    def forward(self, input: torch.Tensor, seq_ids=None):
+        for ln, mergeblock in zip(self.lns, self.mergeblocks):
+            input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
+            return input
+
 class NSP(nn.Module):
     """ Next Step Prediction """
     def __init__(self, config: CN) -> None:
@@ -86,8 +97,10 @@ class NSP(nn.Module):
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = nn.LayerNorm(config.n_embd)
-        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
+
+        self.mergeblocks = nn.ModuleList([MergeBlocks(config, level=i) for i in range(config.n_merges)])
+        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_merges)])
+
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     # TODO: Come up with a clear explanatory name for seq_ids
@@ -113,10 +126,12 @@ class Rgram(nn.Module):
     @staticmethod
     def get_default_config():
         C = CN()
-        # either model_type or (n_layer, n_head, n_embd) must be given in the config
+        # either model_type or (n_layer, n_embd) must be given in the config
         C.model_type = 'rgram'
         C.n_layer = None
         C.n_embd = None
+        C.n_mlp = None
+        C.n_merges = None
         # these options must be filled in externally
         C.vocab_size = None
         C.block_size = None
@@ -139,9 +154,9 @@ class Rgram(nn.Module):
             # translate from model_type to detailed configuration
             config.merge_from_dict({
                 # names follow the huggingface naming conventions
-                'rgram-mini':     dict(n_layer=6, n_embd=192, n_mlp=4*192),
-                'rgram-micro':    dict(n_layer=4, n_embd=128, n_mlp=4*128),
-                'rgram-nano':     dict(n_layer=2, n_embd=48, n_mlp=4*48),
+                'rgram-mini':     dict(n_layer=6, n_embd=192, n_mlp=4*192, n_merges=1),
+                'rgram-micro':    dict(n_layer=4, n_embd=128, n_mlp=4*128, n_merges=1),
+                'rgram-nano':     dict(n_layer=2, n_embd=48, n_mlp=4*48, n_merges=1),
             }[config.model_type])
 
         self.nsp = NSP(config)
