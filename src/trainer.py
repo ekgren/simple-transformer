@@ -109,6 +109,7 @@ class Trainer:
 
                 # forward the model
                 logits, self.loss = model(x, y)
+                self.loss = self.loss / config.grad_accum_steps
 
                 # backprop and update the parameters
                 model.zero_grad(set_to_none=True)
