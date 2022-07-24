@@ -107,7 +107,7 @@ class NSP(nn.Module):
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         x = self.ln_e(tok_emb)
         x = self.drop(x)
-        for ln, mergeblock in zip(self.lns, self.mergeblocks):
+        for mergeblock in self.mergeblocks:
             x = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
         logits = self.lm_head(x)
         loss = None
