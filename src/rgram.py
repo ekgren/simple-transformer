@@ -110,7 +110,8 @@ class NSP(nn.Module):
         x = self.drop(x)
         x_merge = x
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            x_merge = ln(mergeblock(x_merge, seq_ids) + x)  # merge -> residual -> layer norm
+            x_merge = ln(x_merge + x)
+            x_merge = mergeblock(x_merge, seq_ids)  # merge -> residual -> layer norm
         logits = self.lm_head(x_merge)
         loss = None
         if targets is not None:
