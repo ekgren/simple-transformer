@@ -38,6 +38,7 @@ class Trainer:
         C.num_workers = 4
         # optimizer parameters
         C.max_iters = None
+        C.grad_accum_steps = 1
         C.batch_size = 64
         C.learning_rate = 3e-4
         C.betas = (0.9, 0.95)
@@ -96,23 +97,24 @@ class Trainer:
         self.iter_time = time.time()
         data_iter = iter(train_loader)
         while True:
+            for _ in range(config.grad_accum_steps):
+                # fetch the next batch (x, y) and re-init iterator if needed
+                try:
+                    batch = next(data_iter)
+                except StopIteration:
+                    data_iter = iter(train_loader)
+                    batch = next(data_iter)
+                batch = [t.to(self.device) for t in batch]
+                x, y = batch
 
-            # fetch the next batch (x, y) and re-init iterator if needed
-            try:
-                batch = next(data_iter)
-            except StopIteration:
-                data_iter = iter(train_loader)
-                batch = next(data_iter)
-            batch = [t.to(self.device) for t in batch]
-            x, y = batch
+                # forward the model
+                logits, self.loss = model(x, y)
 
-            # forward the model
-            logits, self.loss = model(x, y)
+                # backprop and update the parameters
+                model.zero_grad(set_to_none=True)
+                self.loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
 
-            # backprop and update the parameters
-            model.zero_grad(set_to_none=True)
-            self.loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
             optimizer.step()
 
             self.trigger_callbacks('on_batch_end')
