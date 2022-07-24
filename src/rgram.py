@@ -163,7 +163,8 @@ class Rgram(nn.Module):
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            #torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            torch.nn.init.xavier_uniform_(module.weight)
         elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
@@ -261,7 +262,8 @@ def convert_weights(model: nn.Module):
             if module.bias is not None:
                 module.bias.data = module.bias.data.half()
 
-        #if isinstance(module, (nn.Embedding,)):
-        #    module.weight.data = module.weight.data.half()
+        if isinstance(module, (nn.Embedding,)):
+            module.weight.data = module.weight.data.half()
 
     model.apply(_convert_weights_to_fp16)
+    print("Converted model weights to fp16")
