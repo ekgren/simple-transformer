@@ -7,6 +7,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 from collections import OrderedDict
 import math
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -17,28 +18,12 @@ from src.utils import CfgNode as CN
 # -----------------------------------------------------------------------------
 
 
-def left_pad(xs, dim, pads, fill=None):
-    """ Left pad and cut tensor along a given dimension. Can replace with F.pad()? """
-    shape = xs.shape
-    length = shape[dim]
-    padded = length if pads > length else pads        # Find more explanatory name for this variable.
-    unpadded = 0 if pads > length else length - pads  # Find more explanatory name for this variable.
-    padshape = (*shape[:dim], padded, *shape[dim + 1:])
-    pad_tensor = xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
-    x = xs.narrow(dim, 0, unpadded)
-    return torch.cat([pad_tensor, x], dim)
-
-
-def right_pad(xs, dim, pads, fill=None):
-    """ Right pad and cut tensor along a given dimension. Can replace with F.pad()? """
-    shape = xs.shape
-    length = shape[dim]
-    padded = length if pads > length else pads        # Find more explanatory name for this variable.
-    unpadded = 0 if pads > length else length - pads  # Find more explanatory name for this variable.
-    padshape = (*shape[:dim], padded, *shape[dim + 1:])
-    pad_tensor = xs.new_zeros(padshape) if fill is None else xs.new_full(padshape, fill)
-    x = xs.narrow(dim, padded, unpadded)
-    return torch.cat([x, pad_tensor], dim)
+class LayerNorm(nn.LayerNorm):
+    """Subclass torch's LayerNorm to handle fp16."""
+    def forward(self, x: torch.Tensor):
+        orig_type = x.dtype
+        ret = super().forward(x.type(torch.float32))
+        return ret.type(orig_type)
 
 
 class QuickGELU(nn.Module):
@@ -55,13 +40,13 @@ class MergeBlock(nn.Module):
             ("c_proj", nn.Linear(config.n_mlp, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln = nn.LayerNorm(config.n_embd * 2)
+        self.ln = LayerNorm(config.n_embd * 2)
         self.shift = 2**level
 
     # TODO: Come up with a clear explanatory name for seq_ids
-    def forward(self, input: torch.Tensor, seq_ids=None) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         # Zero pad to the left in the seq dimension and remove the last shift elements
-        x_left_padded = F.pad(input, (0, 0, self.shift, 0))[:-self.shift, :]
+        x_left_padded = F.pad(input, (0, 0, self.shift, -self.shift))
         x_pairs = torch.cat([x_left_padded, input], dim=-1)
         x_merged = self.mlp(self.ln(x_pairs))
         x_out = self.mask(input, x_merged, seq_ids) if seq_ids is not None else x_merged
@@ -71,7 +56,7 @@ class MergeBlock(nn.Module):
     def mask(self, input: torch.Tensor, x_merged: torch.Tensor, seq_ids: torch.Tensor) -> torch.Tensor:
         """ Mask the input to prevent out of bound memory accesses """
         # Zero pad to the left in the seq dimension and remove the last shift elements
-        seq_ids_left_padded = F.pad(seq_ids, (self.shift, 0))[:-self.shift]
+        seq_ids_left_padded = F.pad(seq_ids, (self.shift, -self.shift))
         seq_ids_bool = (seq_ids == seq_ids_left_padded).unsqueeze(1).broadcast_to(input.shape)  # Do we need the unsqueeze?
         return torch.where(seq_ids_bool, x_merged, input)
 
@@ -80,30 +65,31 @@ class MergeBlocks(nn.Module):
     def __init__(self, config: CN) -> None:
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
-        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+        self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
 
-    def forward(self, input: torch.Tensor, seq_ids=None):
+    def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
             input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
             return input
+
 
 class NSP(nn.Module):
     """ Next Step Prediction """
     def __init__(self, config: CN) -> None:
         super().__init__()
-        self.n_embd  = config.n_embd
+        self.n_embd = config.n_embd
         self.n_layer = config.n_layer
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.ln_e = nn.LayerNorm(config.n_embd)
+        self.ln_e = LayerNorm(config.n_embd)
 
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     # TODO: Come up with a clear explanatory name for seq_ids
-    def forward(self, idx: torch.Tensor, seq_ids=None, targets=None):
+    def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         x = self.ln_e(tok_emb)
         x = self.drop(x)
@@ -140,7 +126,7 @@ class Rgram(nn.Module):
         C.attn_pdrop = 0.1
         return C
 
-    def __init__(self, config):
+    def __init__(self, config: CN) -> None:
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
@@ -165,24 +151,24 @@ class Rgram(nn.Module):
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+        convert_weights(self)
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.nsp.parameters())
         print("number of parameters: %.2fM" % (n_params/1e6,))
 
-    def _init_weights(self, module):
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
+        elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-
-    def configure_optimizers(self, train_config):
+    def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
         This long function is unfortunately doing something very simple and is being very defensive:
         We are separating out all parameters of the model into two buckets: those that will experience
@@ -227,13 +213,14 @@ class Rgram(nn.Module):
         optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
         return optimizer
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
         idx, seq_ids = idx.unbind(0)
         logits, loss = self.nsp(idx, seq_ids, targets)
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
+    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0,
+                 do_sample: bool = False, top_k: Optional[int] = None) -> torch.Tensor:
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -263,3 +250,18 @@ class Rgram(nn.Module):
             idx = torch.cat((idx, idx_next), dim=-1)
 
         return idx.unsqueeze(0)
+
+
+def convert_weights(model: nn.Module):
+    """Convert applicable model parameters to fp16"""
+
+    def _convert_weights_to_fp16(module: nn.Module) -> None:
+        if isinstance(module, (nn.Linear,)):
+            module.weight.data = module.weight.data.half()
+            if module.bias is not None:
+                module.bias.data = module.bias.data.half()
+
+        if isinstance(module, (nn.Embedding,)):
+            module.weight.data = module.weight.data.half()
+
+    model.apply(_convert_weights_to_fp16)
