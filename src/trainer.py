@@ -111,7 +111,7 @@ class Trainer:
                 # forward the model
                 logits, loss = model(x, y)
                 loss = loss / config.grad_accum_steps
-                self.loss = loss.item() if self.loss is None else self.loss + loss.item()
+                self.loss = loss if self.loss is None else self.loss + loss
                 # backprop and update the parameters
                 model.zero_grad(set_to_none=True)
                 loss.backward()
