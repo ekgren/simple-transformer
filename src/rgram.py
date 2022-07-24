@@ -99,7 +99,6 @@ class NSP(nn.Module):
         self.ln_e = nn.LayerNorm(config.n_embd)
 
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
-        self.lns = nn.ModuleList([nn.LayerNorm(config.n_embd) for _ in range(config.n_merges)])
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
@@ -108,11 +107,9 @@ class NSP(nn.Module):
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         x = self.ln_e(tok_emb)
         x = self.drop(x)
-        x_merge = x
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            x_merge = ln(x_merge + x)
-            x_merge = mergeblock(x_merge, seq_ids)  # merge -> residual -> layer norm
-        logits = self.lm_head(x_merge)
+            x = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
+        logits = self.lm_head(x)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
