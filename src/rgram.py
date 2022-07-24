@@ -9,6 +9,7 @@ from collections import OrderedDict
 import math
 from typing import Optional
 
+import bitsandbytes as bnb
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -80,7 +81,8 @@ class NSP(nn.Module):
         self.n_embd = config.n_embd
         self.n_layer = config.n_layer
 
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
+        # self.wte = nn.Embedding(config.vocab_size, config.n_embd)
+        self.wte = bnb.nn.StableEmbedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
 
@@ -151,7 +153,6 @@ class Rgram(nn.Module):
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
-        convert_weights(self)
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.nsp.parameters())
@@ -211,7 +212,8 @@ class Rgram(nn.Module):
             {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": train_config.weight_decay},
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
-        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+        # optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+        optimizer = bnb.optim.Adam8bit(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
         return optimizer
 
     def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
