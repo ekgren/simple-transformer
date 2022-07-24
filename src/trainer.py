@@ -124,6 +124,7 @@ class Trainer:
             tnow = time.time()
             self.iter_dt = tnow - self.iter_time
             self.iter_time = tnow
+            self.loss = None
 
             # termination conditions
             if config.max_iters is not None and self.iter_num >= config.max_iters:
