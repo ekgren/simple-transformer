@@ -107,6 +107,8 @@ class NSP(nn.Module):
         logits = self.lm_head(x)
         loss = None
         if targets is not None:
+            if logits.shape[0] != targets.shape[0]:
+                logits = logits[:targets.shape[0], :]
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
 
