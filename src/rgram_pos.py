@@ -67,13 +67,13 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        #self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
+        self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            #quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
-            input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
-            return input
+            quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
+            input = ln(mergeblock(input, seq_ids) + quantized)  # merge -> residual -> layer norm
+            return input, commit_loss
 
 
 class NSP(nn.Module):
@@ -106,14 +106,16 @@ class NSP(nn.Module):
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
         x = self.ln_e(pos_emb)
         x = self.drop(x)
-        for mergeblock in self.mergeblocks:
-            x = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
-        logits = self.lm_head(x)
         loss = None
+        for mergeblock in self.mergeblocks:
+            x, commit_loss = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
+            loss = commit_loss if loss is None else loss + commit_loss
+        logits = self.lm_head(x)
+        #loss = None
         if targets is not None:
             if logits.shape[0] != targets.shape[0]:
                 logits = logits[:targets.shape[0], :]
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            loss = loss + F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
 
 
@@ -196,8 +198,8 @@ class RgramPos(nn.Module):
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
         no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, nn.MultiheadAttention)
-        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        whitelist_weight_modules = (torch.nn.Linear, nn.MultiheadAttention, torch.nn.Embedding)
+        blacklist_weight_modules = (torch.nn.LayerNorm, VectorQuantize)
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
