@@ -93,7 +93,7 @@ class NSP(nn.Module):
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.lm_head.weight = self.wte.weight
+        #self.lm_head.weight = self.wte.weight
 
     # TODO: Come up with a clear explanatory name for seq_ids
     def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -180,7 +180,7 @@ class RgramPos(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
         elif isinstance(module, VectorQuantize):
-            module.weight = self.nsp.wte.weight
+            module.weight = self.nsp.lm_head.weight
 
     def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
