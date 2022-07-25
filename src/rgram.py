@@ -9,10 +9,10 @@ from collections import OrderedDict
 import math
 from typing import Optional
 
-import bitsandbytes as bnb
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from vector_quantize_pytorch import VectorQuantize
 
 from src.utils import CfgNode as CN
 
@@ -67,10 +67,12 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
+        self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
+            quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
+            input = ln(mergeblock(input, seq_ids) + quantized)  # merge -> residual -> layer norm
             return input
 
 
@@ -81,8 +83,8 @@ class NSP(nn.Module):
         self.n_embd = config.n_embd
         self.n_layer = config.n_layer
 
-        # self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        self.wte = bnb.nn.StableEmbedding(config.vocab_size, config.n_embd)
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
+        # self.wte = bnb.nn.StableEmbedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
 
@@ -169,6 +171,8 @@ class Rgram(nn.Module):
         elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
+        elif isinstance(module, VectorQuantize):
+            module.weight = self.nsp.wte.weight
 
     def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
@@ -212,8 +216,8 @@ class Rgram(nn.Module):
             {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": train_config.weight_decay},
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
-        # optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
-        optimizer = bnb.optim.Adam8bit(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+        # optimizer = bnb.optim.Adam8bit(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
         return optimizer
 
     def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
