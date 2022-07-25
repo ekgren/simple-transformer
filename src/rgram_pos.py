@@ -83,6 +83,7 @@ class NSP(nn.Module):
         self.n_embd = config.n_embd
         self.n_layer = config.n_layer
         self.block_size = config.block_size
+        self.vocab_size = config.vocab_size
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
@@ -98,10 +99,11 @@ class NSP(nn.Module):
     # TODO: Come up with a clear explanatory name for seq_ids
     def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         device = idx.device
+        rand_idx = torch.randint(0, self.vocab_size, (self.block_size,), device=device)
         pos = torch.arange(0, self.block_size, dtype=torch.long, device=device).view(-1)
-        tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
+        tok_emb = self.wte(rand_idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
-        x = self.ln_e(pos_emb)
+        x = self.ln_e(tok_emb + pos_emb)
         x = self.drop(x)
         for mergeblock in self.mergeblocks:
             x = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
