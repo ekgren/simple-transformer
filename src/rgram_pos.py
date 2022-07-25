@@ -115,7 +115,7 @@ class NSP(nn.Module):
                 probs = F.softmax(logits, dim=-1)
                 idx = torch.multinomial(probs, num_samples=1).view(-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
-            x = self.ln_e(tok_emb)
+            x = self.ln_e(tok_emb + pos_emb)
             x = self.drop(x)
 
             #loss = None
