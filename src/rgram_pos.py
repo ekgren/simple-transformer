@@ -114,14 +114,14 @@ class NSP(nn.Module):
             probs = F.softmax(logits, dim=-1)
             idx = torch.multinomial(probs, num_samples=1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
-            x = self.ln_e(pos_emb)
+            x = self.ln_e(tok_emb)
             x = self.drop(x)
 
-        #loss = None
-        if targets is not None:
-            if logits.shape[0] != targets.shape[0]:
-                logits = logits[:targets.shape[0], :]
-            loss = loss + F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            #loss = None
+            if targets is not None:
+                if logits.shape[0] != targets.shape[0]:
+                    logits = logits[:targets.shape[0], :]
+                loss = loss + F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
 
 
