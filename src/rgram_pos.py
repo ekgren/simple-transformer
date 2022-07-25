@@ -110,12 +110,15 @@ class NSP(nn.Module):
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
             loss = commit_loss if loss is None else loss + commit_loss
-            logits = self.lm_head(x)
-            probs = F.softmax(logits, dim=-1)
-            idx = torch.multinomial(probs, num_samples=1)
+            with torch.no_grad():
+                logits = self.lm_head(x)
+                probs = F.softmax(logits, dim=-1)
+                idx = torch.multinomial(probs, num_samples=1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
             x = self.drop(x)
+
+        logits = self.lm_head(x)
 
         #loss = None
         if targets is not None:
