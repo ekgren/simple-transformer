@@ -85,7 +85,7 @@ class NSP(nn.Module):
         self.block_size = config.block_size
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        self.wpe = nn.Embedding(config.vocab_size, config.block_size)
+        self.wpe = nn.Embedding(config.block_size, config.n_embd)
         # self.wte = bnb.nn.StableEmbedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
