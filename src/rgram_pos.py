@@ -184,8 +184,8 @@ class RgramPos(nn.Module):
         elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
-        elif isinstance(module, VectorQuantize):
-            module.weight = self.nsp.wte.weight
+        #elif isinstance(module, VectorQuantize):
+        #    module.weight = self.nsp.wte.weight
 
     def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
