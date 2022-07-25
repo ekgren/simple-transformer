@@ -227,7 +227,7 @@ class RgramPos(nn.Module):
 
     def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
         idx, seq_ids = idx.unbind(0)
-        logits, loss = self.nsp(idx, seq_ids, targets)
+        logits, loss = self.nsp(idx, None, targets)
         return logits, loss
 
     @torch.no_grad()
