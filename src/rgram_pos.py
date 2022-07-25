@@ -97,10 +97,10 @@ class NSP(nn.Module):
     # TODO: Come up with a clear explanatory name for seq_ids
     def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         device = idx.device
-        pos = torch.arange(0, self.block_size, dtype=torch.long, device=device)
+        pos = torch.arange(0, self.block_size, dtype=torch.long, device=device).unsqueeze(0)
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
-        x = self.ln_e(pos)
+        x = self.ln_e(pos_emb)
         x = self.drop(x)
         for mergeblock in self.mergeblocks:
             x = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
