@@ -93,7 +93,7 @@ class NSP(nn.Module):
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.lm_head.weight.data = self.wte.weight.data.t()
+        self.lm_head.weight.data = self.wte.weight.data
 
     # TODO: Come up with a clear explanatory name for seq_ids
     def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
