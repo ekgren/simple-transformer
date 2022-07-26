@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from torch.nn import LayerNorm
 from torch.nn import functional as F
-from vector_quantize_pytorch import VectorQuantize
+# from vector_quantize_pytorch import VectorQuantize
 
 from src.utils import CfgNode as CN
 
@@ -84,6 +84,8 @@ class NSP(nn.Module):
         self.n_layer = config.n_layer
         self.block_size = config.block_size
         self.vocab_size = config.vocab_size
+        self.bos_ix = config.bos_ix
+        self.pad_ix = config.pad_ix
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=257)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
@@ -105,7 +107,7 @@ class NSP(nn.Module):
         device = idx.device
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
-        x = pos_emb + torch.where(idx.view(-1, 1) == 257, pos_emb, tok_emb)
+        x = pos_emb + torch.where(idx.view(-1, 1) == self.pad_ix, pos_emb, tok_emb)
         x = self.ln_e(x)
         x = self.drop(x)
         loss = None
@@ -113,8 +115,7 @@ class NSP(nn.Module):
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
             logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
-            logits[:, 256] = -1e10  # mask out bos token
-            logits[:, 257] = -1e10  # mask out padding token
+            logits[:, self.pad_ix] = -1e10  # mask out padding token
 
             # Sample new tokens
             probs = F.softmax(logits, dim=-1)
@@ -160,6 +161,8 @@ class RgramPos(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.block_size = config.block_size
+        self.pad_ix = config.pad_ix
+        self.bos_ix = config.bos_ix
 
         type_given = config.model_type is not None
         params_given = all([config.n_layer is not None, config.n_embd is not None])
@@ -282,7 +285,7 @@ class RgramPos(nn.Module):
             idx = torch.cat([idx,
                              torch.ones(seq_len - idx_len,
                                         dtype=idx.dtype,
-                                        device=device) * 257], # Hard coded magic number for padding
+                                        device=device) * self.pad_ix],  # Hard coded magic number for padding
                             dim=0).view(-1)
 
         sample_ids = idx.new_ones(seq_len).view(-1)
@@ -290,8 +293,7 @@ class RgramPos(nn.Module):
         input = torch.stack([idx, sample_ids, pos_ids], dim=0)
         # forward the model to get the logits for the index in the sequence
         logits, _ = self(input)
-        logits[:, 256] = -1e10  # mask out bos token
-        logits[:, 257] = -1e10  # mask out padding token
+        logits[:, self.pad_ix] = -1e10  # mask out padding token
         # pluck the logits at the final step and scale by desired temperature
         logits = logits / temperature
         # optionally crop the logits to only the top k options
