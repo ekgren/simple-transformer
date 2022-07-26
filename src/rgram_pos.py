@@ -109,11 +109,10 @@ class NSP(nn.Module):
         x = self.ln_e(x)
         x = self.drop(x)
         loss = None
-        # for mergeblock, temp in zip(self.mergeblocks, self.temperatures):
+        logits = None
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
-            # logits = self.lm_head(x) / (1e-6 + (torch.sin(temp['temp']) + 1.)/2.)
-            logits = self.lm_head(x)
+            logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
 
             # Sample new tokens
             probs = F.softmax(logits, dim=-1)
