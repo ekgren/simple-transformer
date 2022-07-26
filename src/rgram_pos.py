@@ -65,20 +65,20 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.out_projs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
+        # self.out_projs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
 
         # Test quantization again later
         # self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
 
-    def forward(self, input: torch.Tensor, sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        for mergeblock, ln, out_proj in zip(self.mergeblocks, self.lns, self.out_projs):
-
-            # Test quantization again later
-            # quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
-
+    def forward(self,
+                input: torch.Tensor,
+                sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+        print("In MergeBlocks", input.shape, sample_ids.shape)
+        #for mergeblock, ln, out_proj in zip(self.mergeblocks, self.lns, self.out_projs):
+        for mergeblock, ln in zip(self.mergeblocks, self.lns):
             commit_loss = None
             input = ln(mergeblock(input, sample_ids) + input)  # merge -> residual -> layer norm
-            input = out_proj(input)  # linear projection
+            # input = out_proj(input)  # linear projection
             return input, commit_loss
 
 
