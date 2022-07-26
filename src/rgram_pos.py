@@ -93,7 +93,7 @@ class NSP(nn.Module):
         self.block_size = config.block_size
         self.vocab_size = config.vocab_size
 
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=-1)
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=257)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
@@ -114,7 +114,7 @@ class NSP(nn.Module):
         print(self.vocab_size, idx.min(), idx.max())
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
-        x = pos_emb + torch.where(idx.view(-1, 1) > -1, tok_emb, pos_emb)
+        x = pos_emb + torch.where(idx.view(-1, 1) == 257, tok_emb, pos_emb)
         x = self.ln_e(x)
         x = self.drop(x)
         loss = None
@@ -290,7 +290,7 @@ class RgramPos(nn.Module):
             idx = torch.cat([idx,
                              torch.ones(seq_len - idx_len,
                                         dtype=idx.dtype,
-                                        device=device) * -1],
+                                        device=device) * 257], # Hard coded magic number for padding
                             dim=0).view(-1)
 
         sample_ids = idx.new_ones(seq_len).view(-1)
