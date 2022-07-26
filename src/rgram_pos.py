@@ -85,7 +85,7 @@ class MergeBlocks(nn.Module):
                 input: torch.Tensor,
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         print("In MergeBlocks", input.shape, sample_ids.shape)
-        #for mergeblock, ln, out_proj in zip(self.mergeblocks, self.lns, self.out_projs):
+        print("input", input.shape, input.dtype, input)
         for mergeblock, ln in zip(self.mergeblocks, self.lns):
             commit_loss = None
             input = ln(mergeblock(input, sample_ids) + input)  # merge -> residual -> layer norm
