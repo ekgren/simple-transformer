@@ -67,12 +67,12 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
+        #self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
-            input = ln(mergeblock(input, seq_ids) + quantized)  # merge -> residual -> layer norm
+            #quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
+            input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
             return input, commit_loss
 
 
@@ -105,6 +105,7 @@ class NSP(nn.Module):
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
         if t < self.block_size:
             rand_idx = torch.randint(0, self.vocab_size, self.block_size, dtype=torch.long, device=device).view(-1)
+            rand_idx[0] = 256
             tok_emb = self.wte(rand_idx)
         else:
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
