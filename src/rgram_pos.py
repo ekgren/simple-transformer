@@ -100,7 +100,7 @@ class NSP(nn.Module):
     def forward(self, idx: torch.Tensor, seq_ids: Optional[torch.Tensor] = None, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         device = idx.device
         t = idx.shape[0]
-        pos = torch.arange(0, min(t, self.block_size), dtype=torch.long, device=device).view(-1)
+        pos = torch.arange(0, self.block_size, dtype=torch.long, device=device).view(-1)
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
         if t < self.block_size:
