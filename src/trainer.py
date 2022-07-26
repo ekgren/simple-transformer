@@ -123,7 +123,8 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                 with torch.no_grad():
                     probs = F.softmax(logits, dim=-1)
-                    x = torch.multinomial(probs, num_samples=1).view(-1)[:-1]
+                    idx = torch.multinomial(probs, num_samples=1).view(-1)[:-1]
+                    x[0, :] = idx
 
             optimizer.step()
 
