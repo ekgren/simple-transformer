@@ -50,6 +50,7 @@ class MergeBlock(nn.Module):
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         print("In MergeBlock.forward", input.shape, sample_ids.shape)
         # Zero pad to the left in the seq dimension and remove the last shift elements
+        print("input", input.shape, input.dtype, input)
         x_left_padded = F.pad(input, (0, 0, self.shift, -self.shift))
         print("x_left_padded", x_left_padded.shape, x_left_padded.dtype, x_left_padded)
         x_pairs = torch.cat([x_left_padded, input], dim=-1)
