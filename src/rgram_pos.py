@@ -111,6 +111,7 @@ class NSP(nn.Module):
         device = idx.device
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
+        print(idx.shape, pos_ids.shape, tok_emb.shape, pos_emb.shape)
         x = pos_emb + torch.where(idx > -1, pos_emb, tok_emb)
         x = self.ln_e(x)
         x = self.drop(x)
