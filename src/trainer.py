@@ -24,9 +24,9 @@ def collater(batch):
         pos_ids += [range(len(x))]          # repeat pos_id for each x
 
     # Flatten batch
-    input_data = torch.cat([torch.tensor(xs).view(-1),
-                            torch.tensor(sample_ids).view(-1),
-                            torch.tensor(pos_ids).view(-1)], dim=0).long()
+    input_data = torch.stack([torch.tensor(xs).view(-1),
+                              torch.tensor(sample_ids).view(-1),
+                              torch.tensor(pos_ids).view(-1)], dim=0).long()
     output_data = torch.tensor(ys).view(-1).long()
     return input_data, output_data
 
