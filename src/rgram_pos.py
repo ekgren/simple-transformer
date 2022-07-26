@@ -115,7 +115,7 @@ class NSP(nn.Module):
                 _, idx = torch.topk(probs, k=1, dim=-1)
             tok_emb = self.wte(idx.view(-1))  # token embeddings of shape (b * t, n_embd)
             quantize = x + (tok_emb - x).detach()
-            x = self.ln_e(quantize)
+            x = self.ln_e(quantize + pos_emb)
 
         logits = self.lm_head(x)
         logits[:, self.pad_ix] = -1e10  # mask out padding token
