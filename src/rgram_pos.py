@@ -123,6 +123,7 @@ class NSP(nn.Module):
 
             # Sample new tokens
             probs = F.softmax(logits, dim=-1)
+            print(probs)
             idx = torch.multinomial(probs, num_samples=1).view(-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
