@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 from torch.nn import LayerNorm
 from torch.nn import functional as F
-# from vector_quantize_pytorch import VectorQuantize
 
 from src.utils import CfgNode as CN
 
@@ -59,21 +58,19 @@ class MergeBlock(nn.Module):
 class MergeBlocks(nn.Module):
     def __init__(self, config: CN) -> None:
         super().__init__()
+        # TODO: Check if better with temp param in sampling?
+        # self.temp = nn.Parameter(torch.ones(1) * 3.14 / 2.)
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
         self.out_projs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
-
-        # Test quantization again later
-        # self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
 
     def forward(self,
                 input: torch.Tensor,
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for mergeblock, ln, out_proj in zip(self.mergeblocks, self.lns, self.out_projs):
-            commit_loss = None
             input = ln(mergeblock(input, sample_ids) + input)  # merge -> residual -> layer norm
             input = out_proj(input)
-            return input, commit_loss
+            return input
 
 
 class NSP(nn.Module):
@@ -93,10 +90,6 @@ class NSP(nn.Module):
         self.ln_e = LayerNorm(config.n_embd)
 
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
-        # self.temperatures = nn.ParameterList(
-        #     OrderedDict(
-        #     [('temp', nn.Parameter(torch.ones(1) * 3.14 / 2.)) for _ in range(config.n_merges)]
-        #     ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     def forward(self,
@@ -114,20 +107,23 @@ class NSP(nn.Module):
         logits = None
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
-            logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
+            # logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
+            logits = self.lm_head(x)
             logits[:, self.pad_ix] = -1e10  # mask out padding token
 
             # Sample new tokens
-            probs = F.softmax(logits, dim=-1)
-            idx = torch.multinomial(probs, num_samples=1).view(-1)
+            with torch.no_grad():
+                probs = F.softmax(logits, dim=-1)
+                # idx = torch.multinomial(probs, num_samples=1).view(-1)
+                _, idx = torch.topk(probs, k=1, dim=-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
-            #x = self.drop(x)
+            x = self.drop(x)
 
-        # If inference get loss
-        if targets is not None:
-            ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            loss = ce if loss is None else loss + ce
+            # If inference get loss
+            if targets is not None:
+                ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+                loss = ce if loss is None else loss + ce
 
         return logits, loss
 
