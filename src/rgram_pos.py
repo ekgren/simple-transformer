@@ -48,19 +48,12 @@ class MergeBlock(nn.Module):
     def forward(self,
                 input: torch.Tensor,
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        print("In MergeBlock.forward", input.shape, sample_ids.shape)
         # Zero pad to the left in the seq dimension and remove the last shift elements
-        print("input", input.shape, input.dtype, input)
         x_left_padded = F.pad(input, (0, 0, self.shift, -self.shift))
-        print("x_left_padded", x_left_padded.shape, x_left_padded.dtype, x_left_padded)
         x_pairs = torch.cat([x_left_padded, input], dim=-1)
-        print("x_pairs", x_pairs.shape)
         x_norm = self.ln(x_pairs)
-        print("x_norm", x_norm.shape, x_norm.dtype, x_norm)
         x_merged = self.mlp(x_norm)
-        print("x_merged", x_merged.shape)
         x_out = self.mask(input, x_merged, sample_ids) if sample_ids is not None else x_merged
-        print("x_out", x_out.shape)
         return x_out
 
     def mask(self, input: torch.Tensor, x_merged: torch.Tensor, sample_ids: torch.Tensor) -> torch.Tensor:
@@ -84,8 +77,6 @@ class MergeBlocks(nn.Module):
     def forward(self,
                 input: torch.Tensor,
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        print("In MergeBlocks", input.shape, sample_ids.shape)
-        print("input", input.shape, input.dtype, input)
         for mergeblock, ln in zip(self.mergeblocks, self.lns):
             commit_loss = None
             input = ln(mergeblock(input, sample_ids) + input)  # merge -> residual -> layer norm
@@ -119,13 +110,10 @@ class NSP(nn.Module):
                 sample_ids: Optional[torch.Tensor] = None,
                 pos_ids: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None) -> torch.Tensor:
-        print("In NSP.forward", idx.shape, sample_ids.shape, pos_ids.shape, targets.shape)
-        print("pos_ids", pos_ids.shape, pos_ids.dtype, pos_ids)
         device = idx.device
         #tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
         x = pos_emb #+ torch.where(idx.view(-1, 1) > -1, tok_emb, pos_emb)
-        print("x", x.shape, x.dtype, x)
         x = self.ln_e(x)
         x = self.drop(x)
         loss = None
