@@ -113,6 +113,8 @@ class NSP(nn.Module):
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
             logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
+            logits[:, 256] = -1e10  # mask out bos token
+            logits[:, 257] = -1e10  # mask out padding token
 
             # Sample new tokens
             probs = F.softmax(logits, dim=-1)
