@@ -255,6 +255,7 @@ class RgramPos(nn.Module):
     def forward(self,
                 input: torch.Tensor,
                 targets: Optional[torch.Tensor] = None):  # Add type hint for output
+        print(input.shape)
         idx, sample_ids, pos_ids = input.unbind(0)
         logits, loss = self.nsp(idx=idx,
                                 sample_ids=sample_ids,
