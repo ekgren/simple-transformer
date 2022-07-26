@@ -20,14 +20,6 @@ from src.utils import CfgNode as CN
 # -----------------------------------------------------------------------------
 
 
-#class LayerNorm(nn.LayerNorm):
-#    """Subclass torch's LayerNorm to handle fp16."""
-#    def forward(self, x: torch.Tensor):
-#        orig_type = x.dtype
-#        ret = super().forward(x.type(torch.float32))
-#        return ret.type(orig_type)
-
-
 class QuickGELU(nn.Module):
     def forward(self, x: torch.Tensor):
         return x * torch.sigmoid(1.702 * x)
@@ -69,7 +61,7 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
         self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        # self.out_projs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
+        self.out_projs = nn.ModuleList([nn.Linear(config.n_embd, config.n_embd, bias=True) for _ in range(config.n_layer)])
 
         # Test quantization again later
         # self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
@@ -77,10 +69,10 @@ class MergeBlocks(nn.Module):
     def forward(self,
                 input: torch.Tensor,
                 sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        for mergeblock, ln in zip(self.mergeblocks, self.lns):
+        for mergeblock, ln, out_proj in zip(self.mergeblocks, self.lns, self.out_projs):
             commit_loss = None
             input = ln(mergeblock(input, sample_ids) + input)  # merge -> residual -> layer norm
-            # input = out_proj(input)  # linear projection
+            input = out_proj(input)
             return input, commit_loss
 
 
