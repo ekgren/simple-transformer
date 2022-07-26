@@ -7,7 +7,6 @@ import time
 from collections import defaultdict
 
 import torch
-from torch.nn import functional as F
 from torch.utils.data.dataloader import DataLoader
 from src.utils import CfgNode as CN
 
@@ -103,16 +102,16 @@ class Trainer:
         self.iter_time = time.time()
         data_iter = iter(train_loader)
         while True:
-            # for _ in range(config.grad_accum_steps):
-                # fetch the next batch (x, y) and re-init iterator if needed
-            try:
-                batch = next(data_iter)
-            except StopIteration:
-                data_iter = iter(train_loader)
-                batch = next(data_iter)
-            batch = [t.to(self.device) for t in batch]
-            x, y = batch
             for _ in range(config.grad_accum_steps):
+                # fetch the next batch (x, y) and re-init iterator if needed
+                try:
+                    batch = next(data_iter)
+                except StopIteration:
+                    data_iter = iter(train_loader)
+                    batch = next(data_iter)
+                batch = [t.to(self.device) for t in batch]
+                x, y = batch
+
                 # forward the model
                 logits, loss = model(x, y)
                 loss = loss / config.grad_accum_steps
@@ -121,10 +120,6 @@ class Trainer:
                 model.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
-                with torch.no_grad():
-                    probs = F.softmax(logits, dim=-1)
-                    idx = torch.multinomial(probs, num_samples=1).view(-1)[:-1]
-                    x[0, 1:] = idx
 
             optimizer.step()
 
