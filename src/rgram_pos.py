@@ -55,7 +55,7 @@ class MergeBlock(nn.Module):
         x_pairs = torch.cat([x_left_padded, input], dim=-1)
         print("x_pairs", x_pairs.shape)
         x_norm = self.ln(x_pairs)
-        print("x_norm", x_norm.shape)
+        print("x_norm", x_norm.shape, x_norm.dtype, x_norm)
         x_merged = self.mlp(x_norm)
         print("x_merged", x_merged.shape)
         x_out = self.mask(input, x_merged, sample_ids) if sample_ids is not None else x_merged
