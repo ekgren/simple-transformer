@@ -114,8 +114,8 @@ class NSP(nn.Module):
             # Sample new tokens
             with torch.no_grad():
                 probs = F.softmax(logits, dim=-1)
-                # idx = torch.multinomial(probs, num_samples=1).view(-1)
-                _, idx = torch.topk(probs, k=1, dim=-1)
+                idx = torch.multinomial(probs, num_samples=1).view(-1)
+                # _, idx = torch.topk(probs, k=1, dim=-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
             x = self.drop(x)
