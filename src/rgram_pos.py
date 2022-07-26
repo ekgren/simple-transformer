@@ -199,13 +199,11 @@ class RgramPos(nn.Module):
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             # Which initialization to use?
-            # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            torch.nn.init.xavier_uniform_(module.weight)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            # torch.nn.init.xavier_uniform_(module.weight)
         elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
-        #elif isinstance(module, VectorQuantize):
-        #    module.weight = self.nsp.wte.weight
 
     def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
@@ -258,6 +256,9 @@ class RgramPos(nn.Module):
                 input: torch.Tensor,
                 targets: Optional[torch.Tensor] = None):  # Add type hint for output
         idx, sample_ids, pos_ids = input.unbind(0)
+        print("idx:", idx)
+        print("sample_ids:", sample_ids)
+        print("pos_ids:", pos_ids)
         logits, loss = self.nsp(idx=idx,
                                 sample_ids=sample_ids,
                                 pos_ids=pos_ids,
