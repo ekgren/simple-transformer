@@ -290,6 +290,8 @@ class RgramPos(nn.Module):
         input = torch.stack([idx, sample_ids, pos_ids], dim=0)
         # forward the model to get the logits for the index in the sequence
         logits, _ = self(input)
+        logits[:, 256] = -1e10  # mask out bos token
+        logits[:, 257] = -1e10  # mask out padding token
         # pluck the logits at the final step and scale by desired temperature
         logits = logits / temperature
         # optionally crop the logits to only the top k options
