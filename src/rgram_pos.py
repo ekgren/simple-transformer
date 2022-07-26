@@ -130,8 +130,6 @@ class NSP(nn.Module):
 
             # If inference get loss
             if targets is not None:
-                if logits.shape[0] != targets.shape[0]:
-                    logits = logits[:targets.shape[0], :]
                 ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
                 loss = ce if loss is None else loss + ce
 
