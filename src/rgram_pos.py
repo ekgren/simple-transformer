@@ -259,7 +259,8 @@ class RgramPos(nn.Module):
         print("idx:", idx.shape, idx)
         print("sample_ids:", sample_ids.shape, sample_ids)
         print("pos_ids:", pos_ids.shape, pos_ids)
-        print("targets:", targets.shape, targets)
+        if targets is not None:
+            print("targets:", targets.shape, targets)
         logits, loss = self.nsp(idx=idx,
                                 sample_ids=sample_ids,
                                 pos_ids=pos_ids,
