@@ -119,6 +119,8 @@ class NSP(nn.Module):
                 sample_ids: Optional[torch.Tensor] = None,
                 pos_ids: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None) -> torch.Tensor:
+        print("In NSP.forward", idx.shape, sample_ids.shape, pos_ids.shape, targets.shape)
+        print("pos_ids", pos_ids.shape, pos_ids.dtype, pos_ids)
         device = idx.device
         #tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
