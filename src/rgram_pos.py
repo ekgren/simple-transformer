@@ -44,12 +44,19 @@ class MergeBlock(nn.Module):
         self.ln = LayerNorm(config.n_embd * 2)
         self.shift = 2**level
 
-    def forward(self, input: torch.Tensor, sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self,
+                input: torch.Tensor,
+                sample_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+        print("In MergeBlock.forward", input.shape, sample_ids.shape)
         # Zero pad to the left in the seq dimension and remove the last shift elements
         x_left_padded = F.pad(input, (0, 0, self.shift, -self.shift))
+        print("x_left_padded", x_left_padded.shape)
         x_pairs = torch.cat([x_left_padded, input], dim=-1)
+        print("x_pairs", x_pairs.shape)
         x_merged = self.mlp(self.ln(x_pairs))
+        print("x_merged", x_merged.shape)
         x_out = self.mask(input, x_merged, sample_ids) if sample_ids is not None else x_merged
+        print("x_out", x_out.shape)
         return x_out
 
     def mask(self, input: torch.Tensor, x_merged: torch.Tensor, sample_ids: torch.Tensor) -> torch.Tensor:
