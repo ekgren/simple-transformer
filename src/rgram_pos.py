@@ -103,7 +103,10 @@ class NSP(nn.Module):
         pos = torch.arange(0, min(t, self.block_size), dtype=torch.long, device=device).view(-1)
         tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
-        x = self.ln_e(pos_emb + tok_emb)
+        if t < self.block_size:
+            x = self.ln_e(pos_emb)
+        else:
+            x = self.ln_e(pos_emb + tok_emb)
         x = self.drop(x)
         loss = None
         for mergeblock in self.mergeblocks:
