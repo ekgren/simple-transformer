@@ -103,7 +103,7 @@ class NSP(nn.Module):
         self.vocab_size = config.vocab_size
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=-1)
-        self.wpe = nn.Embedding(config.block_size, config.n_embd)
+        self.wpe = nn.Embedding(config.block_size + 1, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
 
@@ -120,11 +120,10 @@ class NSP(nn.Module):
                 pos_ids: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         print("In NSP.forward", idx.shape, sample_ids.shape, pos_ids.shape, targets.shape)
-        pos_ids = pos_ids.view(1, -1)
         print("pos_ids", pos_ids.shape, pos_ids.dtype, pos_ids)
         device = idx.device
         #tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
-        pos_emb = self.wpe(pos_ids).squeeze(0)  # position embeddings of shape (b * t, n_pos_embd)
+        pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
         x = pos_emb #+ torch.where(idx.view(-1, 1) > -1, tok_emb, pos_emb)
         print("x", x.shape, x.dtype, x)
         x = self.ln_e(x)
