@@ -10,22 +10,26 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from src.utils import CfgNode as CN
 
-def collater(batch):
-    iids = []
-    oids = []
-    sids = []
-    for seq_id, data in enumerate(batch, 1):
-        input_id, output_id = data
-        iids += input_id
-        oids += output_id
-        sids += [seq_id] * len(input_id)
 
-    iids = torch.stack(
-            (torch.tensor(iids),
-             torch.tensor(sids)
-             ))
-    oids = torch.tensor(oids)
-    return iids, oids
+def collater(batch):
+    xs = []
+    ys = []
+    sample_ids = []
+    pos_ids = []
+    for sample_id, data in enumerate(batch, 1):
+        x, y = data
+        xs += x
+        ys += y
+        sample_ids += [sample_id] * len(x)  # repeat sample_id for each x
+        pos_ids += [range(len(x))]          # repeat pos_id for each x
+
+    # Flatten batch
+    input_data = torch.cat([torch.tensor(xs).view(-1),
+                            torch.tensor(sample_ids).view(-1),
+                            torch.tensor(pos_ids).view(-1)], dim=0).long()
+    output_data = torch.tensor(ys).view(-1).long()
+    return input_data, output_data
+
 
 class Trainer:
 
