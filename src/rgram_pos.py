@@ -109,9 +109,9 @@ class NSP(nn.Module):
                 pos_ids: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         device = idx.device
-        tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
+        #tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
         pos_emb = self.wpe(pos_ids)  # position embeddings of shape (b * t, n_pos_embd)
-        x = pos_emb + torch.where(idx.view(-1, 1) > -1, tok_emb, pos_emb)
+        x = pos_emb #+ torch.where(idx.view(-1, 1) > -1, tok_emb, pos_emb)
         x = self.ln_e(x)
         x = self.drop(x)
         loss = None
