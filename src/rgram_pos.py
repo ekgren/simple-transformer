@@ -120,6 +120,7 @@ class NSP(nn.Module):
                 pos_ids: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None) -> torch.Tensor:
         print("In NSP.forward", idx.shape, sample_ids.shape, pos_ids.shape, targets.shape)
+        pos_ids = pos_ids.view(1, -1)
         print("pos_ids", pos_ids.shape, pos_ids.dtype, pos_ids)
         device = idx.device
         #tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
