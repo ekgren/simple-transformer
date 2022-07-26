@@ -105,9 +105,6 @@ class NSP(nn.Module):
 
         pos_emb = self.wpe(pos)  # position embeddings of shape (b * t, n_pos_embd)
         if t < self.block_size:
-            #rand_idx = torch.randint(0, self.vocab_size, (self.block_size,), dtype=torch.long, device=device).view(-1)
-            #rand_idx[0] = 256
-            #tok_emb = self.wte(rand_idx)
             x = self.ln_e(pos_emb * 2)
         else:
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
@@ -116,20 +113,19 @@ class NSP(nn.Module):
         loss = None
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
-            #loss = commit_loss if loss is None else loss + commit_loss
-            with torch.no_grad():
-                logits = self.lm_head(x)
-                probs = F.softmax(logits, dim=-1)
-                idx = torch.multinomial(probs, num_samples=1).view(-1)
+            logits = self.lm_head(x)
+            probs = F.softmax(logits, dim=-1)
+            idx = torch.multinomial(probs, num_samples=1).view(-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
             x = self.drop(x)
-        logits = self.lm_head(x)
-        #loss = None
-        if targets is not None:
-            if logits.shape[0] != targets.shape[0]:
-                logits = logits[:targets.shape[0], :]
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            #logits = self.lm_head(x)
+            #loss = None
+            if targets is not None:
+                if logits.shape[0] != targets.shape[0]:
+                    logits = logits[:targets.shape[0], :]
+                ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+                loss = ce if loss is None else loss + ce
 
         return logits, loss
 
