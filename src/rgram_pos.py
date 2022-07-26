@@ -97,7 +97,10 @@ class NSP(nn.Module):
         self.ln_e = LayerNorm(config.n_embd)
 
         self.mergeblocks = nn.ModuleList([MergeBlocks(config) for _ in range(config.n_merges)])
-        self.temperatures = nn.ParameterList([nn.Parameter(torch.ones(1)) for _ in range(config.n_merges)])
+        self.temperatures = nn.ParameterList(
+            OrderedDict(
+            [('temp', nn.Parameter(torch.ones(1) * 3.14 / 2.)) for _ in range(config.n_merges)]
+            ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     def forward(self,
@@ -213,8 +216,8 @@ class RgramPos(nn.Module):
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
         no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, nn.MultiheadAttention, torch.nn.Embedding)
-        blacklist_weight_modules = (torch.nn.LayerNorm, VectorQuantize)
+        whitelist_weight_modules = (torch.nn.Linear,)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding, VectorQuantize)
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
@@ -229,6 +232,8 @@ class RgramPos(nn.Module):
                     decay.add(fpn)
                 elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('temp'):
                     no_decay.add(fpn)
 
         # validate that we considered every parameter
