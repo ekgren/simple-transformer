@@ -109,8 +109,8 @@ class NSP(nn.Module):
             x = self.ln_e(pos_emb * 2)
         else:
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
-            cut = random.randint(1, t - 1)
-            tok_emb = torch.cat([tok_emb[:cut], pos_emb[cut:]], dim=0)
+            #cut = random.randint(2, t - 1)
+            #tok_emb = torch.cat([tok_emb[:cut], pos_emb[cut:]], dim=0)
             x = self.ln_e(pos_emb + tok_emb)
         x = self.drop(x)
         loss = None
