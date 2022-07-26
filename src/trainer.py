@@ -23,7 +23,6 @@ def collater(batch):
         sample_ids += [sample_id] * len(x)  # repeat sample_id for each x
         pos_ids += range(len(x))          # repeat pos_id for each x
 
-    print("len(xs), len(ys), len(sample_ids), len(pos_ids)", len(xs), len(ys), len(sample_ids), len(pos_ids))
     # Flatten batch
     input_data = torch.stack([torch.tensor(xs).reshape(-1),
                               torch.tensor(sample_ids).reshape(-1),
