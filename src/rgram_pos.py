@@ -106,7 +106,7 @@ class NSP(nn.Module):
         loss = None
         logits = None
         for mergeblock in self.mergeblocks:
-            x, commit_loss = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
+            x = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
             # logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
             logits = self.lm_head(x)
             logits[:, self.pad_ix] = -1e10  # mask out padding token
