@@ -7,6 +7,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 from collections import OrderedDict
 import math
+import random
 from typing import Optional
 
 import torch
@@ -108,6 +109,8 @@ class NSP(nn.Module):
             x = self.ln_e(pos_emb * 2)
         else:
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
+            cut = random.randint(1, t - 1)
+            tok_emb = torch.cat([tok_emb[:cut], pos_emb[cut:]], dim=0)
             x = self.ln_e(pos_emb + tok_emb)
         x = self.drop(x)
         loss = None
