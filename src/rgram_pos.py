@@ -72,6 +72,7 @@ class MergeBlocks(nn.Module):
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for ln, mergeblock in zip(self.lns, self.mergeblocks):
             #quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
+            commit_loss = None
             input = ln(mergeblock(input, seq_ids) + input)  # merge -> residual -> layer norm
             return input, commit_loss
 
@@ -114,7 +115,7 @@ class NSP(nn.Module):
         loss = None
         for mergeblock in self.mergeblocks:
             x, commit_loss = mergeblock(x, seq_ids)  # merge -> residual -> layer norm
-            loss = commit_loss if loss is None else loss + commit_loss
+            #loss = commit_loss if loss is None else loss + commit_loss
             with torch.no_grad():
                 logits = self.lm_head(x)
                 probs = F.softmax(logits, dim=-1)
