@@ -119,12 +119,12 @@ class NSP(nn.Module):
             idx = torch.multinomial(probs, num_samples=1).view(-1)
             tok_emb = self.wte(idx)  # token embeddings of shape (b * t, n_embd)
             x = self.ln_e(tok_emb + x)
-            x = self.drop(x)
+            #x = self.drop(x)
 
-            # If inference get loss
-            if targets is not None:
-                ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                loss = ce if loss is None else loss + ce
+        # If inference get loss
+        if targets is not None:
+            ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            loss = ce if loss is None else loss + ce
 
         return logits, loss
 
