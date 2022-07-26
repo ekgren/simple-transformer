@@ -103,7 +103,7 @@ class NSP(nn.Module):
         self.vocab_size = config.vocab_size
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=-1)
-        self.wpe = nn.Embedding(config.block_size + 1, config.n_embd)
+        self.wpe = nn.Embedding(config.block_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
 
