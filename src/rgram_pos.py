@@ -84,7 +84,7 @@ class NSP(nn.Module):
         self.bos_ix = config.bos_ix
         self.pad_ix = config.pad_ix
 
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=257)
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd, padding_idx=config.pad_ix)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
@@ -108,6 +108,9 @@ class NSP(nn.Module):
         for mergeblock in self.mergeblocks:
             x = mergeblock(x, sample_ids)  # merge -> residual -> layer norm
             # logits = self.lm_head(x) if logits is None else logits + self.lm_head(x)
+
+
+
             logits = self.lm_head(x)
             logits[:, self.pad_ix] = -1e10  # mask out padding token
 
@@ -117,13 +120,14 @@ class NSP(nn.Module):
                 # idx = torch.multinomial(probs, num_samples=1).view(-1)
                 _, idx = torch.topk(probs, k=1, dim=-1)
             tok_emb = self.wte(idx.view(-1))  # token embeddings of shape (b * t, n_embd)
-            x = self.ln_e(tok_emb + x)
-            x = self.drop(x)
+            quantize = x + (tok_emb - x).detach()
+            x = self.ln_e(quantize)
+            #x = self.drop(x)
 
-            # If inference get loss
-            if targets is not None:
-                ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-                loss = ce if loss is None else loss + ce
+        # If inference get loss
+        if targets is not None:
+            ce = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            loss = ce if loss is None else loss + ce
 
         return logits, loss
 
