@@ -216,9 +216,9 @@ class Rgram(nn.Module):
         # optimizer = bnb.optim.Adam8bit(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
         return optimizer
 
-    def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
-        idx, seq_ids = idx.unbind(0)
-        logits, loss = self.nsp(idx, seq_ids, targets)
+    def forward(self, input, targets: Optional[torch.Tensor] = None):  # Add type hint for output
+        idx, sample_ids, pos_ids = input.unbind(0)
+        logits, loss = self.nsp(idx, sample_ids, targets)
         return logits, loss
 
     @torch.no_grad()
