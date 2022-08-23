@@ -70,7 +70,7 @@ class MergeBlocks(nn.Module):
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         for i in torch.arange(self.n_layer).to(input.device):
-            le = self.le(i)
+            le = self.le(i).unsqueeze(0).repeat(input.shape[0], 1)
             input = self.ln(self.mergeblock(input, le, shift=i.item()+1, seq_ids=seq_ids) + input)  # merge -> residual -> layer norm
             return input
 
