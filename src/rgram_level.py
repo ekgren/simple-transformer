@@ -65,7 +65,7 @@ class MergeBlocks(nn.Module):
         super().__init__()
         self.n_layer = config.n_layer
         self.mergeblock = MergeBlock(config)
-        self.lns = LayerNorm(config.n_embd)
+        self.ln = LayerNorm(config.n_embd)
         self.le = nn.Embedding(config.n_layer, config.n_embd)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
