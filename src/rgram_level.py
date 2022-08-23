@@ -69,7 +69,7 @@ class MergeBlocks(nn.Module):
         self.le = nn.Embedding(config.n_layer, config.n_embd)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        for i in torch.arange(self.n_layer):
+        for i in torch.arange(self.n_layer).to(input.device):
             le = self.le(i)
             input = self.ln(self.mergeblock(input, le, shift=i.item()+1, seq_ids=seq_ids) + input)  # merge -> residual -> layer norm
             return input
