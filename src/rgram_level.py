@@ -48,7 +48,7 @@ class MergeBlock(nn.Module):
         x_left_padded = F.pad(input, (0, 0, shift, -shift))
         x_pairs = torch.cat([x_left_padded, input, lvl_emb], dim=-1)
         x_merged = self.mlp(self.ln(x_pairs))
-        x_out = self.mask(input, x_merged, seq_ids) if seq_ids is not None else x_merged
+        x_out = self.mask(input, x_merged, shift, seq_ids) if seq_ids is not None else x_merged
         return x_out
 
     # TODO: Come up with a clear explanatory name for seq_ids
