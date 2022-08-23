@@ -229,13 +229,15 @@ class Rgram(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
-        idx = idx.view(-1)
+        idx, device = idx.view(-1), idx.device
+        idx_len = idx.size(0)
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             #idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
             # forward the model to get the logits for the index in the sequence
             seq_ids = idx.new_ones(idx.shape)
-            logits, _ = self(torch.stack((idx, seq_ids)))
+            pos_ids = torch.arange(idx_len, device=device).view(-1)
+            logits, _ = self(torch.stack((idx, seq_ids, pos_ids), dim=1))
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[-1, :] / temperature
             # optionally crop the logits to only the top k options
