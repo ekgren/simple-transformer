@@ -237,7 +237,7 @@ class Rgram(nn.Module):
             # forward the model to get the logits for the index in the sequence
             seq_ids = idx.new_ones(idx.shape)
             pos_ids = torch.arange(idx_len, device=device).view(-1)
-            logits, _ = self(torch.stack((idx, seq_ids, pos_ids), dim=1))
+            logits, _ = self(torch.stack((idx, seq_ids, pos_ids), dim=0))
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[-1, :] / temperature
             # optionally crop the logits to only the top k options
