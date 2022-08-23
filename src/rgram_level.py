@@ -235,7 +235,7 @@ class Rgram(nn.Module):
             # if the sequence context is growing too long we must crop it at block_size
             #idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
             # forward the model to get the logits for the index in the sequence
-            seq_ids = idx.new_ones(idx.shape)
+            seq_ids = idx.new_ones(idx.shape).view(-1)
             pos_ids = torch.arange(idx_len, device=device).view(-1)
             logits, _ = self(torch.stack((idx, seq_ids, pos_ids), dim=0))
             # pluck the logits at the final step and scale by desired temperature
