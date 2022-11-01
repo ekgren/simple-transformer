@@ -12,7 +12,6 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from vector_quantize_pytorch import VectorQuantize
 
 from src.utils import CfgNode as CN
 
@@ -33,31 +32,30 @@ class QuickGELU(nn.Module):
 
 
 class MergeBlock(nn.Module):
-    def __init__(self, config: CN, level: int = 0) -> None:
+    def __init__(self, config: CN) -> None:
         super().__init__()
         self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(config.n_embd * 2, config.n_mlp)),
+            ("c_fc", nn.Linear(config.n_embd * 3, config.n_mlp)),
             ("gelu", QuickGELU()),
             ("c_proj", nn.Linear(config.n_mlp, config.n_embd)),
             ('dropout', nn.Dropout(config.resid_pdrop)),
         ]))
-        self.ln = LayerNorm(config.n_embd * 2)
-        self.shift = 2**level
+        self.ln = LayerNorm(config.n_embd * 3)
 
     # TODO: Come up with a clear explanatory name for seq_ids
-    def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, lvl_emb: torch.Tensor, shift: int, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         # Zero pad to the left in the seq dimension and remove the last shift elements
-        x_left_padded = F.pad(input, (0, 0, self.shift, -self.shift))
-        x_pairs = torch.cat([x_left_padded, input], dim=-1)
+        x_left_padded = F.pad(input, (0, 0, shift, -shift))
+        x_pairs = torch.cat([x_left_padded, input, lvl_emb], dim=-1)
         x_merged = self.mlp(self.ln(x_pairs))
-        x_out = self.mask(input, x_merged, seq_ids) if seq_ids is not None else x_merged
+        x_out = self.mask(input, x_merged, shift, seq_ids) if seq_ids is not None else x_merged
         return x_out
 
     # TODO: Come up with a clear explanatory name for seq_ids
-    def mask(self, input: torch.Tensor, x_merged: torch.Tensor, seq_ids: torch.Tensor) -> torch.Tensor:
+    def mask(self, input: torch.Tensor, x_merged: torch.Tensor, shift: int, seq_ids: torch.Tensor) -> torch.Tensor:
         """ Mask the input to prevent out of bound memory accesses """
         # Zero pad to the left in the seq dimension and remove the last shift elements
-        seq_ids_left_padded = F.pad(seq_ids, (self.shift, -self.shift))
+        seq_ids_left_padded = F.pad(seq_ids, (shift, -shift))
         seq_ids_bool = (seq_ids == seq_ids_left_padded).unsqueeze(1).broadcast_to(input.shape)  # Do we need the unsqueeze?
         return torch.where(seq_ids_bool, x_merged, input)
 
@@ -65,15 +63,18 @@ class MergeBlock(nn.Module):
 class MergeBlocks(nn.Module):
     def __init__(self, config: CN) -> None:
         super().__init__()
-        self.mergeblocks = nn.ModuleList([MergeBlock(config, level=i) for i in range(config.n_layer)])
-        self.lns = nn.ModuleList([LayerNorm(config.n_embd) for _ in range(config.n_layer)])
-        self.vq = VectorQuantize(dim=config.n_embd, codebook_size=config.vocab_size, decay=0.8, commitment_weight=1.)
+        self.n_layer = config.n_layer
+        self.mergeblock = MergeBlock(config)
+        self.ln = LayerNorm(config.n_embd)
+        self.le = nn.Embedding(config.n_layer, config.n_embd)
 
     def forward(self, input: torch.Tensor, seq_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        for ln, mergeblock in zip(self.lns, self.mergeblocks):
-            quantized, indices, commit_loss = self.vq(input)  # (1, 1024, 256), (1, 1024), (1)
-            input = ln(mergeblock(input, seq_ids) + quantized)  # merge -> residual -> layer norm
+        for i in torch.arange(self.n_layer).to(input.device):
+            le = self.le(i).unsqueeze(0).repeat(input.shape[0], 1)
+            shift = 2 ** i.item()
+            input = self.ln(self.mergeblock(input, le, shift=shift, seq_ids=seq_ids) + input)  # merge -> residual -> layer norm
             return input
+
 
 
 class NSP(nn.Module):
@@ -84,7 +85,6 @@ class NSP(nn.Module):
         self.n_layer = config.n_layer
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        # self.wte = bnb.nn.StableEmbedding(config.vocab_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
         self.ln_e = LayerNorm(config.n_embd)
 
@@ -171,8 +171,6 @@ class Rgram(nn.Module):
         elif isinstance(module, LayerNorm):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
-        elif isinstance(module, VectorQuantize):
-            module.weight = self.nsp.wte.weight
 
     def configure_optimizers(self, train_config: CN):  # Add type hint for output
         """
@@ -220,9 +218,9 @@ class Rgram(nn.Module):
         # optimizer = bnb.optim.Adam8bit(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
         return optimizer
 
-    def forward(self, idx, targets: Optional[torch.Tensor] = None):  # Add type hint for output
-        idx, seq_ids = idx.unbind(0)
-        logits, loss = self.nsp(idx, seq_ids, targets)
+    def forward(self, input, targets: Optional[torch.Tensor] = None):  # Add type hint for output
+        idx, sample_ids, pos_ids = input.unbind(0)
+        logits, loss = self.nsp(idx, sample_ids, targets)
         return logits, loss
 
     @torch.no_grad()
@@ -233,13 +231,15 @@ class Rgram(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
-        idx = idx.view(-1)
+        idx, device = idx.view(-1), idx.device
+        idx_len = idx.size(0)
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             #idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
             # forward the model to get the logits for the index in the sequence
-            seq_ids = idx.new_ones(idx.shape)
-            logits, _ = self(torch.stack((idx, seq_ids)))
+            seq_ids = idx.new_ones(idx.shape).view(-1)
+            #pos_ids = torch.arange(idx.shape, device=device).view(-1)
+            logits, _ = self(torch.stack((idx, seq_ids, seq_ids), dim=0))
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[-1, :] / temperature
             # optionally crop the logits to only the top k options
@@ -257,19 +257,3 @@ class Rgram(nn.Module):
             idx = torch.cat((idx, idx_next), dim=-1)
 
         return idx.unsqueeze(0)
-
-
-def convert_weights(model: nn.Module):
-    """Convert applicable model parameters to fp16"""
-
-    def _convert_weights_to_fp16(module: nn.Module) -> None:
-        if isinstance(module, (nn.Linear,)):
-            module.weight.data = module.weight.data.half()
-            if module.bias is not None:
-                module.bias.data = module.bias.data.half()
-
-        if isinstance(module, (nn.Embedding,)):
-            module.weight.data = module.weight.data.half()
-
-    model.apply(_convert_weights_to_fp16)
-    print("Converted model weights to fp16")
