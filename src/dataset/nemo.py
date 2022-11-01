@@ -295,10 +295,13 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
         
         tok_buff = None
         offset = None
-
+        
+        written = None
         vacant = None
-        doc_ids = None
-        tok_ids = None
+        doc_id = None
+
+        doc_ids = np.empty(self.max_len, dtype=np.int64)
+        tok_ids = np.empty(self.max_len, dtype=np.int64)
 
         def populate_token_buffer():
             nonlocal tok_buff, offset
@@ -306,22 +309,22 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
             offset = 0
 
         def reset_batch():
-            nonlocal vacant, tok_ids, doc_ids
+            nonlocal vacant, written, doc_id
+            written = 0
             vacant = self.max_len
-            tok_ids = []
-            doc_ids = []
-            
+            doc_id = 1
         
         populate_token_buffer()
         reset_batch()
 
-        while idx < len(self.ds):
+        while True:
             size = len(tok_buff) - offset
             read = min(size, vacant)
 
-            tok_ids.append(tok_buff[offset:offset+read])
-            doc_ids.append([idx]*read)
-
+            tok_ids[written:written+read] = tok_buff[offset:offset+read]
+            doc_ids[written:written+read].fill(doc_id)
+            
+            written += read
             offset += read
             vacant -= read
             
@@ -329,21 +332,26 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
             # Increment document idx and read in a new document
             if size == read:
                 idx += step 
-                populate_token_buffer()
+                if idx < len(self.ds):
+                    doc_id += 1
+                    populate_token_buffer()
+                else:
+                    break
             
             # If we filled up the batch
             # concatenate parts, yield the result
             # Reset tracking variables
             if vacant == 0:
-                yield np.concatenate(tok_ids, dtype=np.int64), np.concatenate(doc_ids)
+                yield np.array(tok_ids, copy=True), np.array(doc_ids, copy=True)
                 reset_batch()
 
 if __name__ == '__main__':
     import sentencepiece as spm
+    import tqdm
     sp = spm.SentencePieceProcessor(model_file='/home/amaru/data/64k_new.model')
     ds = IterableBinDataset('/home/amaru/data/articles_nordic.jsonl_text_document', 16384)
-    dl = torch.utils.data.DataLoader(ds, num_workers=2, batch_size=None)
-    for ti, di in islice(dl, 10):
+    dl = torch.utils.data.DataLoader(ds, num_workers=0, batch_size=None)
+    for ti, di in tqdm.tqdm(dl):
         print(sp.decode(ti.tolist()))
-        print('========================================')
+        pass
 
