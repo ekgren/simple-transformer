@@ -339,10 +339,11 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
                 reset_batch()
 
 if __name__ == '__main__':
+    import sentencepiece as spm
+    sp = spm.SentencePieceProcessor(model_file='/home/amaru/data/64k_new.model')
     ds = IterableBinDataset('/home/amaru/data/articles_nordic.jsonl_text_document', 16384)
-    dl = torch.utils.data.DataLoader(ds, num_workers=10)
-    for d in islice(dl, 10):
-        print(d)
-
-    
+    dl = torch.utils.data.DataLoader(ds, num_workers=2, batch_size=None)
+    for ti, di in islice(dl, 10):
+        print(sp.decode(ti.tolist()))
+        print('========================================')
 
