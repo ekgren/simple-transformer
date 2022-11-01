@@ -46,7 +46,7 @@ import logging
 import shutil
 import struct
 from functools import lru_cache
-from itertools import accumulate
+from itertools import accumulate, islice
 
 import numpy as np
 import torch
@@ -271,9 +271,78 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
         return os.path.exists(index_file_path(path)) and os.path.exists(data_file_path(path))
 
 
+class IterableBinDataset(torch.utils.data.IterableDataset):
+    def __init__(self, path, max_len):
+        super().__init__()
+        self.ds = MMapIndexedDataset(path)
+        self.itoi = np.arange(len(self.ds), dtype=np.uint64)
+        self.max_len = max_len
+        self.shuffle()
+
+    def shuffle(self):
+        np.random.shuffle(self.itoi)
+
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:  # single-process data loading, return the full iterator
+            idx = 0
+            step = 1
+        else:  
+            # in a worker process
+            # split workload
+            idx = worker_info.id
+            step = worker_info.num_workers
+        
+        tok_buff = None
+        offset = None
+
+        vacant = None
+        doc_ids = None
+        tok_ids = None
+
+        def populate_token_buffer():
+            nonlocal tok_buff, offset
+            tok_buff = self.ds.get(self.itoi[idx])
+            offset = 0
+
+        def reset_batch():
+            nonlocal vacant, tok_ids, doc_ids
+            vacant = self.max_len
+            tok_ids = []
+            doc_ids = []
+            
+        
+        populate_token_buffer()
+        reset_batch()
+
+        while idx < len(self.ds):
+            size = len(tok_buff) - offset
+            read = min(size, vacant)
+
+            tok_ids.append(tok_buff[offset:offset+read])
+            doc_ids.append([idx]*read)
+
+            offset += read
+            vacant -= read
+            
+            # If we read the whole document
+            # Increment document idx and read in a new document
+            if size == read:
+                idx += step 
+                populate_token_buffer()
+            
+            # If we filled up the batch
+            # concatenate parts, yield the result
+            # Reset tracking variables
+            if vacant == 0:
+                yield np.concatenate(tok_ids, dtype=np.int64), np.concatenate(doc_ids)
+                reset_batch()
+
 if __name__ == '__main__':
-    ds = MMapIndexedDataset('/home/amaru/data/articles_nordic.jsonl_text_document')
-    print(ds.get(10))
+    ds = IterableBinDataset('/home/amaru/data/articles_nordic.jsonl_text_document', 16384)
+    dl = torch.utils.data.DataLoader(ds, num_workers=10)
+    for d in islice(dl, 10):
+        print(d)
 
     
 
