@@ -47,6 +47,7 @@ import shutil
 import struct
 from functools import lru_cache
 from itertools import accumulate, islice
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -270,28 +271,24 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
     def exists(path):
         return os.path.exists(index_file_path(path)) and os.path.exists(data_file_path(path))
 
-
 class IterableBinDataset(torch.utils.data.IterableDataset):
-    def __init__(self, path, max_len):
+    def __init__(self, mmap_ds, max_len, subset=None, repeat=False):
         super().__init__()
-        self.ds = MMapIndexedDataset(path)
-        self.itoi = np.arange(len(self.ds), dtype=np.uint64)
-        self.max_len = max_len
-        self.shuffle()
-
-    def shuffle(self):
+        self.ds = mmap_ds
+        if subset is None:
+            self.itoi = np.arange(len(self.ds), dtype=np.uint64)
+        else:
+            self.itoi = np.array(subset, copy=True)
+        
         np.random.shuffle(self.itoi)
+        self.max_len = max_len
+        self.repeat = repeat
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
-        if worker_info is None:  # single-process data loading, return the full iterator
-            idx = 0
-            step = 1
-        else:  
-            # in a worker process
-            # split workload
-            idx = worker_info.id
-            step = worker_info.num_workers
+        assert worker_info is None, "Multiworker not implemented (and not worth it?)"
+
+        ix = 0 
         
         tok_buff = None
         offset = None
@@ -305,7 +302,7 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
 
         def populate_token_buffer():
             nonlocal tok_buff, offset
-            tok_buff = self.ds.get(self.itoi[idx])
+            tok_buff = self.ds.get(self.itoi[ix])
             offset = 0
 
         def reset_batch():
@@ -316,7 +313,7 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
         
         populate_token_buffer()
         reset_batch()
-
+        
         while True:
             size = len(tok_buff) - offset
             read = min(size, vacant)
@@ -327,16 +324,31 @@ class IterableBinDataset(torch.utils.data.IterableDataset):
             written += read
             offset += read
             vacant -= read
+
+            # assert written + vacant = max_len, "This always holds"
             
             # If we read the whole document
-            # Increment document idx and read in a new document
+            # Increment document ix and read in a new document
             if size == read:
-                idx += step 
-                if idx < len(self.ds):
-                    doc_id += 1
-                    populate_token_buffer()
-                else:
-                    break
+                
+                # If we are repeating: 
+                # Shuffle seen document indices on the fly
+                # (Fisher-Yates)
+                if self.repeat:
+                    jx = np.random.randint(ix+1)
+                    self.itoi[[ix, jx]] = self.itoi[[jx, ix]]
+
+                ix += 1
+                # When done with epoch
+                #  If set to repeat: Shuffle and Repeat
+                #  Else: Break
+                if ix >= len(self.itoi):
+                    if self.repeat:
+                        ix = 0 
+                    else:
+                        break
+                doc_id += 1
+                populate_token_buffer()
             
             # If we filled up the batch
             # concatenate parts, yield the result
@@ -349,9 +361,8 @@ if __name__ == '__main__':
     import sentencepiece as spm
     import tqdm
     sp = spm.SentencePieceProcessor(model_file='/home/amaru/data/64k_new.model')
-    ds = IterableBinDataset('/home/amaru/data/articles_nordic.jsonl_text_document', 16384)
+    mmap_ds = MMapIndexedDataset('/home/amaru/data/articles_nordic.jsonl_text_document')
+    ds = IterableBinDataset(mmap_ds, 16384, repeat=True)
     dl = torch.utils.data.DataLoader(ds, num_workers=0, batch_size=None)
     for ti, di in tqdm.tqdm(dl):
-        print(sp.decode(ti.tolist()))
         pass
-
